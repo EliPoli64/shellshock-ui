@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 import { ItemMenu } from './ItemMenu';
 
@@ -19,85 +19,98 @@ export const ActionButtons: React.FC = () => {
     setShowItemMenu(!showItemMenu);
   };
 
-  const isDisabled = !isPlayerTurn || isAnimating || isRevealingShells;
+  const isVisible = isPlayerTurn && !isAnimating && !isRevealingShells && !showItemMenu;
+  const isDisabled = !isPlayerTurn || isAnimating || isRevealingShells || showItemMenu;
 
   return (
-    <div className="flex flex-col items-center gap-4 sm:gap-6 mb-8">
-      {showItemMenu && <ItemMenu />}
+    <div className="flex flex-col items-center gap-[2vh] mb-[4vh] min-h-[15vh] justify-end">
+      <AnimatePresence mode="wait">
+        {showItemMenu && <ItemMenu />}
+      </AnimatePresence>
       
-      <div className="flex gap-3 sm:gap-4 flex-wrap justify-center">
-        <motion.button
-          whileHover={!isDisabled ? { scale: 1.05 } : {}}
-          whileTap={!isDisabled ? { scale: 0.95 } : {}}
-          onClick={shootDealer}
-          disabled={isDisabled}
-          className="font-special-elite shadow-lg transition-all border-2 sm:border-4"
-          style={{ 
-            padding: '2vh 3vh',
-            fontSize: '2.5vh',
-            backgroundColor: !isDisabled ? 'linear-gradient(to bottom, #b91c1c, #7f1d1d)' : '#1f2937',
-            borderColor: !isDisabled ? '#dc2626' : '#374151',
-            color: !isDisabled ? '#e8e0d4' : '#6b7280',
-            cursor: !isDisabled ? 'pointer' : 'not-allowed'
-          }}
-        >
-          🔫 SHOOT DEALER
-        </motion.button>
+      <AnimatePresence>
+        {isVisible && (
+          <motion.div 
+            initial={{ opacity: 0, y: 100, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9, transition: { duration: 0.2 } }}
+            transition={{ 
+              type: "spring",
+              damping: 20,
+              stiffness: 150,
+            }}
+            className="flex gap-[2vw] flex-wrap justify-center"
+          >
+            <motion.button
+              whileHover={{ scale: 1.05, y: -5 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={shootDealer}
+              className="font-special-elite shadow-lg transition-all border-[0.4vh]"
+              style={{ 
+                padding: '2vh 3vh',
+                fontSize: '2.5vh',
+                backgroundColor: 'linear-gradient(to bottom, #b91c1c, #7f1d1d)',
+                borderColor: '#dc2626',
+                color: '#e8e0d4',
+                cursor: 'pointer'
+              }}
+            >
+              🔫 SHOOT DEALER
+            </motion.button>
 
-        <motion.button
-          whileHover={!isDisabled ? { scale: 1.05 } : {}}
-          whileTap={!isDisabled ? { scale: 0.95 } : {}}
-          onClick={shootSelf}
-          disabled={isDisabled}
-          className="font-special-elite shadow-lg transition-all border-2 sm:border-4"
-          style={{ 
-            padding: '2vh 3vh',
-            fontSize: '2.5vh',
-            backgroundColor: !isDisabled ? 'linear-gradient(to bottom, #a16207, #78350f)' : '#1f2937',
-            borderColor: !isDisabled ? '#ca8a04' : '#374151',
-            color: !isDisabled ? '#e8e0d4' : '#6b7280',
-            cursor: !isDisabled ? 'pointer' : 'not-allowed'
-          }}
-        >
-          🎯 SHOOT YOURSELF
-        </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05, y: -5 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={shootSelf}
+              className="font-special-elite shadow-lg transition-all border-[0.4vh]"
+              style={{ 
+                padding: '2vh 3vh',
+                fontSize: '2.5vh',
+                backgroundColor: 'linear-gradient(to bottom, #a16207, #78350f)',
+                borderColor: '#ca8a04',
+                color: '#e8e0d4',
+                cursor: 'pointer'
+              }}
+            >
+              🎯 SHOOT YOURSELF
+            </motion.button>
 
-        <motion.button
-          whileHover={!isDisabled ? { scale: 1.05 } : {}}
-          whileTap={!isDisabled ? { scale: 0.95 } : {}}
-          onClick={toggleItemMenu}
-          disabled={isDisabled}
-          className="font-special-elite shadow-lg transition-all border-2 sm:border-4"
-          style={{ 
-            padding: '2vh 3vh',
-            fontSize: '2.5vh',
-            backgroundColor: !isDisabled ? 'linear-gradient(to bottom, #1d4ed8, #1e3a8a)' : '#1f2937',
-            borderColor: !isDisabled ? '#2563eb' : '#374151',
-            color: !isDisabled ? '#e8e0d4' : '#6b7280',
-            cursor: !isDisabled ? 'pointer' : 'not-allowed'
-          }}
-        >
-          🎒 USE ITEM
-        </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05, y: -5 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={toggleItemMenu}
+              className="font-special-elite shadow-lg transition-all border-[0.4vh]"
+              style={{ 
+                padding: '2vh 3vh',
+                fontSize: '2.5vh',
+                backgroundColor: 'linear-gradient(to bottom, #1d4ed8, #1e3a8a)',
+                borderColor: '#2563eb',
+                color: '#e8e0d4',
+                cursor: 'pointer'
+              }}
+            >
+              🎒 USE ITEM
+            </motion.button>
 
-        <motion.button
-          whileHover={!isDisabled ? { scale: 1.05 } : {}}
-          whileTap={!isDisabled ? { scale: 0.95 } : {}}
-          onClick={fold}
-          disabled={isDisabled}
-          className="font-special-elite shadow-lg transition-all border-2 sm:border-4"
-          style={{ 
-            padding: '2vh 3vh',
-            fontSize: '2.5vh',
-            backgroundColor: !isDisabled ? 'linear-gradient(to bottom, #4b5563, #1f2937)' : '#1f2937',
-            borderColor: !isDisabled ? '#6b7280' : '#374151',
-            color: !isDisabled ? '#e8e0d4' : '#6b7280',
-            cursor: !isDisabled ? 'pointer' : 'not-allowed'
-          }}
-        >
-          🏳️ FOLD
-        </motion.button>
-      </div>
+            <motion.button
+              whileHover={{ scale: 1.05, y: -5 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={fold}
+              className="font-special-elite shadow-lg transition-all border-[0.4vh]"
+              style={{ 
+                padding: '2vh 3vh',
+                fontSize: '2.5vh',
+                backgroundColor: 'linear-gradient(to bottom, #4b5563, #1f2937)',
+                borderColor: '#6b7280',
+                color: '#e8e0d4',
+                cursor: 'pointer'
+              }}
+            >
+              🏳️ FOLD
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
