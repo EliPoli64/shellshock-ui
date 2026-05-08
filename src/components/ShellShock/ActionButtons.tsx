@@ -2,6 +2,7 @@ import React from 'react';
  import { motion, AnimatePresence } from 'framer-motion'; 
  import { useShellShockStore } from '../../store/shellShockStore'; 
  import { ItemMenu } from './ItemMenu'; 
+ import { soundManager } from '../../utils/soundEffects';
  
  export const ActionButtons: React.FC = () => { 
    const { 
@@ -16,8 +17,24 @@ import React from 'react';
    } = useShellShockStore(); 
  
    const toggleItemMenu = () => { 
+     soundManager.play('uiClick');
      setShowItemMenu(!showItemMenu); 
    }; 
+
+   const handleShootDealer = () => {
+     soundManager.play('uiClick');
+     shootDealer();
+   };
+
+   const handleShootSelf = () => {
+     soundManager.play('uiClick');
+     shootSelf();
+   };
+
+   const handleFold = () => {
+     soundManager.play('uiClick');
+     fold();
+   };
  
    const isVisible = isPlayerTurn && !isAnimating && !isRevealingShells && !showItemMenu; 
    const isDisabled = !isPlayerTurn || isAnimating || isRevealingShells || showItemMenu; 
@@ -36,15 +53,15 @@ import React from 'react';
                exit={{ opacity: 0, y: 50, scale: 0.9, transition: { duration: 0.2 } }} 
                transition={{ 
                  type: "spring", 
-                 damping: 20, 
-                 stiffness: 150, 
+                 damping: 40, 
+                 stiffness: 800, 
                }} 
                className="flex gap-[2vw] flex-wrap justify-center" 
              > 
                <motion.button 
                  whileHover={{ scale: 1.05, y: -5 }} 
                  whileTap={{ scale: 0.95 }} 
-                 onClick={shootDealer} 
+                 onClick={handleShootDealer} 
                  className="font-special-elite shadow-lg transition-all border-[0.4vh]" 
                  style={{ 
                    padding: '2vh 3vh', 
@@ -61,7 +78,7 @@ import React from 'react';
                <motion.button 
                  whileHover={{ scale: 1.05, y: -5 }} 
                  whileTap={{ scale: 0.95 }} 
-                 onClick={shootSelf} 
+                 onClick={handleShootSelf} 
                  className="font-special-elite shadow-lg transition-all border-[0.4vh]" 
                  style={{ 
                    padding: '2vh 3vh', 
@@ -95,7 +112,7 @@ import React from 'react';
                <motion.button 
                  whileHover={{ scale: 1.05, y: -5 }} 
                  whileTap={{ scale: 0.95 }} 
-                 onClick={fold} 
+                 onClick={handleFold} 
                  className="font-special-elite shadow-lg transition-all border-[0.4vh]" 
                  style={{ 
                    padding: '2vh 3vh', 

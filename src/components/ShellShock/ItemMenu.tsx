@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
+import { soundManager } from '../../utils/soundEffects';
 
 export const ItemMenu: React.FC = () => { 
   const items = useShellShockStore((state) => state.items); 
@@ -8,6 +9,16 @@ export const ItemMenu: React.FC = () => {
   const isAnimating = useShellShockStore((state) => state.isAnimating); 
   const setShowItemMenu = useShellShockStore((state) => state.setShowItemMenu); 
   
+  const handleUseItem = (key: string) => {
+    soundManager.play('uiClick');
+    useItem(key);
+  };
+
+  const handleClose = () => {
+    soundManager.play('uiClick');
+    setShowItemMenu(false);
+  };
+
   const playerItems = [ 
     { key: 'magnifyingGlass', name: '🔍', count: items.magnifyingGlass, label: 'Peek' }, 
     { key: 'beer', name: '🍺', count: items.beer, label: 'Rack' }, 
@@ -23,7 +34,7 @@ export const ItemMenu: React.FC = () => {
         initial={{ opacity: 0, y: 20, scale: 0.95 }} 
         animate={{ opacity: 1, y: 0, scale: 1 }} 
         exit={{ opacity: 0, y: 20, scale: 0.95 }} 
-        transition={{ type: "spring", damping: 20, stiffness: 300 }} 
+        transition={{ type: "spring", damping: 40, stiffness: 800 }} 
         className="flex items-center gap-[2vh] bg-black/60 p-[2vh] rounded-[2vh] border-[0.3vh] border-purple-900/50 backdrop-blur-sm relative max-w-[90vw]" 
       > 
         <div className="flex gap-[1vh] flex-wrap justify-center flex-1"> 
@@ -32,7 +43,7 @@ export const ItemMenu: React.FC = () => {
               key={item.key} 
               whileHover={item.count > 0 && !isAnimating ? { scale: 1.05, y: -2 } : {}} 
               whileTap={item.count > 0 && !isAnimating ? { scale: 0.95 } : {}} 
-              onClick={() => useItem(item.key)} 
+              onClick={() => handleUseItem(item.key)} 
               disabled={item.count <= 0 || isAnimating} 
               className="font-special-elite shadow-lg transition-all border-[0.2vh] flex flex-col items-center gap-[0.5vh] rounded-[1vh]" 
               style={{ 
@@ -57,7 +68,7 @@ export const ItemMenu: React.FC = () => {
         <motion.button
           whileHover={{ scale: 1.1, backgroundColor: '#b91c1c', borderColor: '#ef4444' }}
           whileTap={{ scale: 0.9 }}
-          onClick={() => setShowItemMenu(false)}
+          onClick={handleClose}
           className="font-special-elite flex flex-col items-center justify-center gap-1 p-[1.5vh] border-[0.2vh] border-gray-600 text-gray-400 rounded-[1.5vh] hover:text-white transition-all group"
           title="Close Backpack"
         >

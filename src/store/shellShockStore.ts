@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { soundManager } from '../utils/soundEffects';
 import { relayClient } from '../lib/relayClient';
 import type { RelayRoomPhase, RelayServerMessage } from '../types/relay';
 
@@ -461,6 +462,7 @@ export const useShellShockStore = create<ShellShockState>()(
         },
 
         reloadShotgun: () => {
+          soundManager.play('reload');
           const totalShells = 6;
           const minLive = 1;
           const maxLive = totalShells - 1;
@@ -493,6 +495,7 @@ export const useShellShockStore = create<ShellShockState>()(
             return;
           }
 
+          soundManager.play('turnStart');
           const generateRandomItems = () => ({
             magnifyingGlass: Math.floor(Math.random() * 3),
             beer: Math.floor(Math.random() * 3),
@@ -553,10 +556,13 @@ export const useShellShockStore = create<ShellShockState>()(
             currentShell: 'unknown',
           }));
 
+          soundManager.play(isLive ? 'shotLive' : 'shotBlank');
+
           window.setTimeout(() => {
             if (isLive) {
               const newDealerHealth = Math.max(0, dealerHealth - damage);
               if (newDealerHealth <= 0) {
+                soundManager.play('win');
                 set((state) => ({
                   dealerHealth: 0,
                   gameStatus: 'round_end',
@@ -567,6 +573,7 @@ export const useShellShockStore = create<ShellShockState>()(
                 }));
               } else {
                 const shouldPassTurn = !dealerHandcuffed;
+                if (!shouldPassTurn) soundManager.play('turnStart');
                 set({
                   dealerHealth: newDealerHealth,
                   isPlayerTurn: !shouldPassTurn,
@@ -582,6 +589,7 @@ export const useShellShockStore = create<ShellShockState>()(
               }
             } else {
               const shouldPassTurn = !dealerHandcuffed;
+              if (!shouldPassTurn) soundManager.play('turnStart');
               set({
                 isPlayerTurn: !shouldPassTurn,
                 dealerHandcuffed: false,
@@ -621,10 +629,13 @@ export const useShellShockStore = create<ShellShockState>()(
             currentShell: 'unknown',
           }));
 
+          soundManager.play(isLive ? 'shotLive' : 'shotBlank');
+
           window.setTimeout(() => {
             if (isLive) {
               const newPlayerHealth = Math.max(0, playerHealth - damage);
               if (newPlayerHealth <= 0) {
+                soundManager.play('loss');
                 set((state) => ({
                   playerHealth: 0,
                   gameStatus: 'gameover',
@@ -647,6 +658,7 @@ export const useShellShockStore = create<ShellShockState>()(
                 }
               }
             } else {
+              soundManager.play('turnStart');
               set({
                 isPlayerTurn: true,
                 gameStatus: 'playing',
@@ -667,6 +679,7 @@ export const useShellShockStore = create<ShellShockState>()(
             return;
           }
 
+          soundManager.play('itemUse');
           const newItems = { ...state.items };
           if (item === 'magnifyingGlass' && newItems.magnifyingGlass > 0) {
             newItems.magnifyingGlass -= 1;
@@ -821,6 +834,7 @@ export const useShellShockStore = create<ShellShockState>()(
         },
 
         resetTurn: () => {
+          soundManager.play('turnStart');
           set({
             isPlayerTurn: true,
             turnTimer: 15,
@@ -854,6 +868,7 @@ export const useShellShockStore = create<ShellShockState>()(
               if (currentDealerItems.cigarettes > 0 && get().dealerHealth < 3) {
                 currentDealerItems.cigarettes -= 1;
                 itemsUsedThisTurn += 1;
+                soundManager.play('itemUse');
                 set({
                   dealerItems: { ...currentDealerItems },
                   dealerHealth: Math.min(get().dealerHealth + 1, 3),
@@ -868,6 +883,7 @@ export const useShellShockStore = create<ShellShockState>()(
               if (currentDealerItems.magnifyingGlass > 0 && knownShell === 'unknown') {
                 currentDealerItems.magnifyingGlass -= 1;
                 itemsUsedThisTurn += 1;
+                soundManager.play('itemUse');
                 knownShell = get().chamber[0];
                 set({
                   dealerItems: { ...currentDealerItems },
@@ -882,6 +898,7 @@ export const useShellShockStore = create<ShellShockState>()(
               if (currentDealerItems.beer > 0 && knownShell === 'blank') {
                 currentDealerItems.beer -= 1;
                 itemsUsedThisTurn += 1;
+                soundManager.play('itemUse');
                 const ejectedShell = get().chamber[0];
                 const isLive = ejectedShell === 'live';
                 set((state) => ({
@@ -903,6 +920,7 @@ export const useShellShockStore = create<ShellShockState>()(
               if (currentDealerItems.saw > 0 && knownShell === 'live' && !sawUsed) {
                 currentDealerItems.saw -= 1;
                 itemsUsedThisTurn += 1;
+                soundManager.play('itemUse');
                 sawUsed = true;
                 set({
                   dealerItems: { ...currentDealerItems },
@@ -918,6 +936,7 @@ export const useShellShockStore = create<ShellShockState>()(
               if (currentDealerItems.handcuffs > 0 && !get().playerHandcuffed) {
                 currentDealerItems.handcuffs -= 1;
                 itemsUsedThisTurn += 1;
+                soundManager.play('itemUse');
                 set({
                   dealerItems: { ...currentDealerItems },
                   playerHandcuffed: true,
@@ -932,6 +951,7 @@ export const useShellShockStore = create<ShellShockState>()(
               if (currentDealerItems.pill > 0 && get().dealerHealth <= 1) {
                 currentDealerItems.pill -= 1;
                 itemsUsedThisTurn += 1;
+                soundManager.play('itemUse');
                 const heal = Math.random() < 0.5;
                 const newHealth = heal ? Math.min(get().dealerHealth + 2, 3) : Math.max(get().dealerHealth - 1, 0);
 
@@ -1004,6 +1024,7 @@ export const useShellShockStore = create<ShellShockState>()(
                 }));
               } else {
                 const shouldPassTurn = !playerHandcuffed;
+                if (shouldPassTurn) soundManager.play('turnStart');
                 set({
                   dealerHealth: newDealerHealth,
                   isPlayerTurn: shouldPassTurn,
@@ -1037,6 +1058,7 @@ export const useShellShockStore = create<ShellShockState>()(
               }));
             } else {
               const shouldPassTurn = !playerHandcuffed;
+              if (shouldPassTurn) soundManager.play('turnStart');
               set({
                 playerHealth: newPlayerHealth,
                 isPlayerTurn: shouldPassTurn,
@@ -1050,6 +1072,7 @@ export const useShellShockStore = create<ShellShockState>()(
             }
           } else {
             const shouldPassTurn = !playerHandcuffed;
+            if (shouldPassTurn) soundManager.play('turnStart');
             set({
               isPlayerTurn: shouldPassTurn,
               playerHandcuffed: false,

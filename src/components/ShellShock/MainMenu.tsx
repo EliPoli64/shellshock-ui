@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 import { WalletButton } from '../WalletButton';
+import { soundManager } from '../../utils/soundEffects';
 
 export const MainMenu = () => {
   const { startGame, wallet, relayReady, relayConnectionState, openPvpSetup, refreshRelayStatus } =
@@ -18,12 +19,30 @@ export const MainMenu = () => {
   const canEnterPvp = Boolean(wallet) && relayReady;
 
   const handleStartGame = () => {
+    soundManager.play('uiClick');
     if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(err => {
         console.warn(`Error attempting to enable full-screen mode: ${err.message}`);
       });
     }
     startGame('pve', 0.01);
+  };
+
+  const handleShowHelp = () => {
+    soundManager.play('uiClick');
+    setShowHelp(true);
+  };
+
+  const handleCloseHelp = () => {
+    soundManager.play('uiClick');
+    setShowHelp(false);
+  };
+
+  const handlePvpClick = () => {
+    if (canEnterPvp) {
+      soundManager.play('uiClick');
+      void openPvpSetup();
+    }
   };
 
   const instructions = [
@@ -106,7 +125,7 @@ export const MainMenu = () => {
         <motion.button
           whileHover={{ scale: 1.05, backgroundColor: "rgba(255, 255, 255, 0.1)" }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => setShowHelp(true)}
+          onClick={handleShowHelp}
           className="w-full px-[4vh] py-[2vh] bg-transparent border-[0.4vh] border-gray-700 text-gray-400 font-special-elite text-[2.2vh] shadow-lg transition-all"
         >
           📜 HOW TO PLAY
@@ -115,9 +134,7 @@ export const MainMenu = () => {
         <motion.button
           whileHover={canEnterPvp ? { scale: 1.05 } : {}}
           whileTap={canEnterPvp ? { scale: 0.95 } : {}}
-          onClick={() => {
-            void openPvpSetup();
-          }}
+          onClick={handlePvpClick}
           className={`w-full px-8 py-4 border-4 font-special-elite text-xl md:text-2xl shadow-lg transition-all ${
             canEnterPvp
               ? 'bg-gradient-to-b from-red-900 to-black border-red-700 text-text-cream hover:from-red-800 hover:to-gray-950'
@@ -160,7 +177,7 @@ export const MainMenu = () => {
               <div className="flex justify-between items-center mb-[4vh]">
                 <h2 className="font-special-elite text-[4vh] text-neon-yellow neon-text">INSTRUCTIONS</h2>
                 <button 
-                  onClick={() => setShowHelp(false)}
+                  onClick={handleCloseHelp}
                   className="text-gray-500 hover:text-white text-[3vh] transition-colors"
                 >✕</button>
               </div>
@@ -194,7 +211,7 @@ export const MainMenu = () => {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => setShowHelp(false)}
+                onClick={handleCloseHelp}
                 className="w-full mt-[4vh] py-[2vh] bg-purple-900/40 border border-purple-500/50 text-purple-200 font-special-elite text-[2vh] rounded-[1vh] hover:bg-purple-800/40 transition-all"
               >
                 GOT IT

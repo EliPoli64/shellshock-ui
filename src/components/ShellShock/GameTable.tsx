@@ -73,7 +73,7 @@ export const GameTable: React.FC = () => {
     let timer: NodeJS.Timeout; 
     if (isPlayerTurn && gameStatus === 'playing' && !isAnimating && !isRevealingShells) { 
       timer = setInterval(() => { 
-        decrementTimer(); 
+        // decrementTimer(); 
       }, 1000); 
     } 
     return () => clearInterval(timer); 
@@ -173,15 +173,15 @@ export const GameTable: React.FC = () => {
               exit={{ opacity: 0, backgroundColor: 'rgba(0,0,0,0)' }} 
               className="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-[2px]" 
             > 
-              <motion.div 
-                initial={{ scale: 0.5, y: 20 }} 
-                animate={{ scale: 1, y: 0 }} 
-                exit={{ scale: 1.5, opacity: 0 }} 
-                className="text-center px-[2vw]" 
-              > 
-                <h3 className="font-special-elite text-[6vh] text-neon-yellow neon-text uppercase tracking-widest drop-shadow-[0_0_20px_rgba(255,255,0,0.9)]"> 
-                  {dealerActionText} 
-                </h3> 
+              <motion.div
+                initial={{ scale: 0.5, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 1.5, opacity: 0 }}
+                className="text-center px-[2vw]"
+              >
+                <h3 className="font-special-elite text-[4vh] text-neon-yellow neon-text uppercase tracking-widest drop-shadow-[0_0_20px_rgba(255,255,0,0.9)]">
+                  {dealerActionText}
+                </h3>
               </motion.div> 
             </motion.div> 
           )} 
@@ -223,36 +223,57 @@ export const GameTable: React.FC = () => {
               </motion.div> 
             )} 
  
-            {gameStatus === 'shot_animation' && !dealerActionText && ( 
-              <motion.div 
-                initial={{ scale: 0.5, opacity: 0 }} 
-                animate={{ scale: [1, 1.5, 1.2], opacity: 1 }} 
-                transition={{ duration: 0.5 }} 
-                className="flex flex-col items-center gap-[2vh]" 
-              > 
+            {gameStatus === 'shot_animation' && !dealerActionText && (
+              <motion.div
+                initial={{ scale: 0.1, opacity: 0, rotate: -10 }}
+                animate={{ 
+                  scale: [1, 1.8, 1.2], 
+                  opacity: 1,
+                  rotate: [0, 5, -5, 0],
+                }}
+                transition={{ duration: 0.4, times: [0, 0.4, 1] }}
+                className="flex flex-col items-center gap-[2vh] relative z-[70]"
+              >
+                {lastShotResult === 'live' && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: [0, 0.5, 0] }}
+                    transition={{ duration: 0.4, repeat: 1 }}
+                    className="absolute inset-[-50vh] bg-danger-red/20 pointer-events-none z-[-1]"
+                  />
+                )}
+
                 <motion.div 
-                  animate={lastShotResult === 'live' ? { 
-                    color: ['#ff0000', '#ffffff', '#ff0000'], 
-                    textShadow: ['0 0 20px #ff0000', '0 0 40px #ff0000', '0 0 20px #ff0000'] 
-                  } : {}} 
-                  transition={{ repeat: Infinity, duration: 0.2 }} 
-                  className="font-special-elite text-[10vh] leading-none" 
-                > 
-                  {lastShotResult === 'live' ? ( 
-                    <span className="text-danger-red">BOOM!</span> 
-                  ) : ( 
-                    <span className="text-gray-400">CLICK...</span> 
-                  )} 
-                </motion.div> 
+                  animate={lastShotResult === 'live' ? {
+                    color: ['#ff0000', '#ffffff', '#ff0000'],
+                    textShadow: [
+                      '0 0 20px #ff0000, 0 0 40px #ff0000, 0 0 60px #ff0000',
+                      '0 0 40px #ffadadff, 0 0 80px #ffadadff, 0 0 120px #ffadadff',
+                      '0 0 20px #ff0000, 0 0 40px #ff0000, 0 0 60px #ff0000'
+                    ],
+                    scale: [1, 1.1, 1]
+                  } : {
+                    color: ['#9ca3af', '#ffffff', '#9ca3af'],
+                    textShadow: ['0 0 10px #4b5563', '0 0 20px #9ca3af', '0 0 10px #4b5563']
+                  }}
+                  transition={{ repeat: Infinity, duration: 0.30 }}
+                  className="font-special-elite text-[10vh] leading-none tracking-tighter italic"
+                >
+                  {lastShotResult === 'live' ? (
+                    <span className="drop-shadow-[0_10px_10px_rgba(0,0,0,0.8)]">BOOM!</span>
+                  ) : (
+                    <span className="drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)]">CLICK...</span>
+                  )}
+                </motion.div>
                 <motion.div 
-                  initial={{ opacity: 0, y: 10 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  transition={{ delay: 0.3 }} 
-                  className="font-special-elite text-[3vh] text-text-cream uppercase tracking-[0.5em] opacity-80" 
-                > 
-                  {lastShotTarget === 'dealer' ? 'Target: Dealer' : 'Target: You'} 
-                </motion.div> 
-              </motion.div> 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="font-special-elite text-[4vh] text-text-cream uppercase tracking-[0.8em] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/40 px-[2vh] py-[0.5vh] rounded-full backdrop-blur-sm"
+                >
+                  {lastShotTarget === 'dealer' ? 'Target: Dealer' : 'Target: You'}
+                </motion.div>
+              </motion.div>
             )} 
              
             {gameStatus === 'playing' && !isAnimating && !isRevealingShells && !dealerActionText && ( 
