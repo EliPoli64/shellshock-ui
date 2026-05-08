@@ -14,16 +14,35 @@ import React from 'react';
      setShowItemMenu, 
      isAnimating, 
      isRevealingShells, 
+     gameMode,
+     wallet,
+     turnWallet,
+     players
    } = useShellShockStore(); 
+
+   const isPvP = gameMode === 'pvp';
+   const myTurn = isPvP ? turnWallet === wallet : isPlayerTurn;
+   const otherPlayers = isPvP ? players.filter(p => p.wallet !== wallet) : [];
  
    const toggleItemMenu = () => { 
      soundManager.play('uiClick');
      setShowItemMenu(!showItemMenu); 
    }; 
 
-   const handleShootDealer = () => {
+   const handleShootDealer = (targetWallet?: string) => {
      soundManager.play('uiClick');
-     shootDealer();
+     if (isPvP) {
+       // In PvP, we need to know who we are shooting
+       // For now, if there's only one opponent, shoot them. 
+       // If multiple, this would need a target selector.
+       const target = targetWallet || otherPlayers[0]?.wallet;
+       if (target) {
+         // This would be a relay message in a real implementation
+         console.log(`Shooting player: ${target}`);
+       }
+     } else {
+       shootDealer();
+     }
    };
 
    const handleShootSelf = () => {
@@ -36,11 +55,10 @@ import React from 'react';
      fold();
    };
  
-   const isVisible = isPlayerTurn && !isAnimating && !isRevealingShells && !showItemMenu; 
-   const isDisabled = !isPlayerTurn || isAnimating || isRevealingShells || showItemMenu; 
+   const isVisible = myTurn && !isAnimating && !isRevealingShells && !showItemMenu; 
  
    return ( 
-     <div className="flex flex-col items-center gap-[2vh] mb-[4vh] min-h-[15vh] justify-end"> 
+     <div className="flex flex-col items-center gap-[2vh] mb-[2vh] min-h-[12vh] justify-end"> 
        <AnimatePresence mode="wait"> 
          {showItemMenu ? (
            <ItemMenu key="item-menu" />
@@ -48,80 +66,57 @@ import React from 'react';
            isVisible && ( 
              <motion.div 
                key="action-buttons"
-               initial={{ opacity: 0, y: 100, scale: 0.8 }} 
+               initial={{ opacity: 0, y: 50, scale: 0.9 }} 
                animate={{ opacity: 1, y: 0, scale: 1 }} 
-               exit={{ opacity: 0, y: 50, scale: 0.9, transition: { duration: 0.2 } }} 
-               transition={{ 
-                 type: "spring", 
-                 damping: 40, 
-                 stiffness: 800, 
-               }} 
-               className="flex gap-[2vw] flex-wrap justify-center" 
+               exit={{ opacity: 0, y: 20, scale: 0.95, transition: { duration: 0.2 } }} 
+               className="flex gap-[1.5vw] flex-wrap justify-center" 
              > 
-               <motion.button 
-                 whileHover={{ scale: 1.05, y: -5 }} 
-                 whileTap={{ scale: 0.95 }} 
-                 onClick={handleShootDealer} 
-                 className="font-special-elite shadow-lg transition-all border-[0.4vh]" 
-                 style={{ 
-                   padding: '2vh 3vh', 
-                   fontSize: '2.5vh', 
-                   backgroundColor: 'linear-gradient(to bottom, #b91c1c, #7f1d1d)', 
-                   borderColor: '#dc2626', 
-                   color: '#e8e0d4', 
-                   cursor: 'pointer' 
-                 }} 
-               > 
-                 🔫 SHOOT DEALER 
-               </motion.button> 
+               {isPvP ? (
+                 otherPlayers.map(p => (
+                   <motion.button 
+                     key={p.wallet}
+                     whileHover={{ scale: 1.05, y: -2 }} 
+                     whileTap={{ scale: 0.95 }} 
+                     onClick={() => handleShootDealer(p.wallet)} 
+                     className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-danger-red to-red-900 border-red-700 text-text-cream px-[2vh] py-[1.5vh] text-[1.8vh] cursor-pointer"
+                   > 
+                     🔫 SHOOT {p.wallet.slice(0, 4)} 
+                   </motion.button> 
+                 ))
+               ) : (
+                 <motion.button 
+                   whileHover={{ scale: 1.05, y: -2 }} 
+                   whileTap={{ scale: 0.95 }} 
+                   onClick={() => handleShootDealer()} 
+                   className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-danger-red to-red-900 border-red-700 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
+                 > 
+                   🔫 SHOOT DEALER 
+                 </motion.button> 
+               )}
    
                <motion.button 
-                 whileHover={{ scale: 1.05, y: -5 }} 
+                 whileHover={{ scale: 1.05, y: -2 }} 
                  whileTap={{ scale: 0.95 }} 
                  onClick={handleShootSelf} 
-                 className="font-special-elite shadow-lg transition-all border-[0.4vh]" 
-                 style={{ 
-                   padding: '2vh 3vh', 
-                   fontSize: '2.5vh', 
-                   backgroundColor: 'linear-gradient(to bottom, #a16207, #78350f)', 
-                   borderColor: '#ca8a04', 
-                   color: '#e8e0d4', 
-                   cursor: 'pointer' 
-                 }} 
+                 className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-amber-700 to-amber-900 border-amber-600 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
                > 
                  🎯 SHOOT YOURSELF 
                </motion.button> 
    
                <motion.button 
-                 whileHover={{ scale: 1.05, y: -5 }} 
+                 whileHover={{ scale: 1.05, y: -2 }} 
                  whileTap={{ scale: 0.95 }} 
                  onClick={toggleItemMenu} 
-                 className="font-special-elite shadow-lg transition-all border-[0.4vh]" 
-                 style={{ 
-                   padding: '2vh 3vh', 
-                   fontSize: '2.5vh', 
-                   backgroundColor: 'linear-gradient(to bottom, #1d4ed8, #1e3a8a)', 
-                   borderColor: '#2563eb', 
-                   color: '#e8e0d4', 
-                   cursor: 'pointer' 
-                 }} 
+                 className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-blue-700 to-blue-900 border-blue-600 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
                > 
                  🎒 USE ITEM 
                </motion.button> 
    
                <motion.button 
-                 whileHover={{ scale: 1.05, y: -5 }} 
+                 whileHover={{ scale: 1.05, y: -2 }} 
                  whileTap={{ scale: 0.95 }} 
                  onClick={handleFold} 
-                 className="font-special-elite shadow-lg transition-all border-[0.4vh]" 
-                 style={{ 
-                   padding: '2vh 3vh', 
-                   fontSize: '2.5vh', 
-                   backgroundColor: 'linear-gradient(to bottom, #4b5563, #1f2937)', 
-                   borderColor: '#6b7280', 
-                   color: '#e8e0d4', 
-                   cursor: 'pointer' 
-                 }} 
+                 className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-gray-700 to-gray-900 border-gray-600 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
                > 
                  🏳️ FOLD 
                </motion.button> 

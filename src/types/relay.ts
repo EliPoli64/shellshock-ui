@@ -35,6 +35,19 @@ export type RelayServerMessage =
       turn_wallet: string | null;
       updated_at: string;
       last_signature: string | null;
+      players?: {
+        wallet: string;
+        health: number;
+        items?: {
+          magnifyingGlass: number;
+          beer: number;
+          handcuffs: number;
+          cigarettes: number;
+          saw: number;
+          pill: number;
+        };
+        handcuffed?: boolean;
+      }[];
     }
   | {
       type: 'room.event';

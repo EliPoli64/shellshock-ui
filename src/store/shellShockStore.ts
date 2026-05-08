@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { soundManager } from '../utils/soundEffects';
 import { relayClient } from '../lib/relayClient';
+import { backendClient } from '../lib/backendClient';
 import type { RelayRoomPhase, RelayServerMessage } from '../types/relay';
+import type { ItemType } from '../types/backend';
 
 type GameMode = 'pve' | 'pvp' | null;
 type GameStatus = 'menu' | 'setup' | 'playing' | 'shot_animation' | 'round_end' | 'gameover';
@@ -81,6 +83,20 @@ interface ShellShockState {
   roomUpdatedAt: string | null;
   lastSignature: string | null;
 
+  players: {
+    wallet: string;
+    health: number;
+    items: {
+      magnifyingGlass: number;
+      beer: number;
+      handcuffs: number;
+      cigarettes: number;
+      saw: number;
+      pill: number;
+    };
+    handcuffed: boolean;
+  }[];
+
   connectWallet: (wallet: string | null, solBalance?: number) => void;
   refreshRelayStatus: () => Promise<void>;
   openPvpSetup: () => Promise<void>;
@@ -94,9 +110,9 @@ interface ShellShockState {
   handleRelayError: (message: string) => void;
   returnToMenu: () => void;
   startGame: (mode: 'pve' | 'pvp', bet: number) => void;
-  shootDealer: () => void;
-  shootSelf: () => void;
-  useItem: (item: string) => void;
+  shootDealer: () => Promise<void>;
+  shootSelf: () => Promise<void>;
+  useItem: (item: string) => Promise<void>;
   fold: () => void;
   playAgain: () => void;
   leaveTable: () => void;
@@ -219,6 +235,8 @@ export const useShellShockStore = create<ShellShockState>()(
         turnWallet: null,
         roomUpdatedAt: null,
         lastSignature: null,
+
+        players: [],
 
         connectWallet: (wallet, solBalance = 0) => set({ wallet, solBalance }),
 
@@ -385,6 +403,20 @@ export const useShellShockStore = create<ShellShockState>()(
               get().subscribeToRoom();
               break;
             case 'room.state':
+              const pvpPlayers = (message.players || []).map((p: any) => ({
+                wallet: p.wallet,
+                health: p.health,
+                items: p.items || {
+                  magnifyingGlass: 0,
+                  beer: 0,
+                  handcuffs: 0,
+                  cigarettes: 0,
+                  saw: 0,
+                  pill: 0,
+                },
+                handcuffed: p.handcuffed || false,
+              }));
+
               set({
                 roomPubkey: message.room_pubkey,
                 roomPhase: message.phase,
@@ -393,6 +425,7 @@ export const useShellShockStore = create<ShellShockState>()(
                 lastSignature: message.last_signature,
                 gameStatus: mapPhaseToGameStatus(message.phase),
                 isSearching: false,
+                players: pvpPlayers,
               });
               break;
             case 'room.event':
@@ -531,10 +564,24 @@ export const useShellShockStore = create<ShellShockState>()(
           }, 3000);
         },
 
-        shootDealer: () => {
-          const { transportMode, isPlayerTurn, chamber, dealerHealth, shellsRemaining, isSawActive, dealerHandcuffed } =
+        shootDealer: async () => {
+          const { transportMode, isPlayerTurn, chamber, dealerHealth, shellsRemaining, isSawActive, dealerHandcuffed, matchId, wallet } =
             get();
-          if (isRelayMode(transportMode) || !isPlayerTurn || chamber.length === 0) {
+          
+          if (isRelayMode(transportMode)) {
+            if (!matchId || !wallet) return;
+            const res = await backendClient.sendAction({
+              match_id: matchId,
+              player_wallet: wallet,
+              action: 'ShootDealer',
+            });
+            if (!res.success) {
+              set({ relayError: res.error || 'Failed to shoot dealer' });
+            }
+            return;
+          }
+
+          if (!isPlayerTurn || chamber.length === 0) {
             return;
           }
 
@@ -605,9 +652,23 @@ export const useShellShockStore = create<ShellShockState>()(
           }, 1500);
         },
 
-        shootSelf: () => {
-          const { transportMode, isPlayerTurn, chamber, playerHealth, shellsRemaining, isSawActive } = get();
-          if (isRelayMode(transportMode) || !isPlayerTurn || chamber.length === 0) {
+        shootSelf: async () => {
+          const { transportMode, isPlayerTurn, chamber, playerHealth, shellsRemaining, isSawActive, matchId, wallet } = get();
+          
+          if (isRelayMode(transportMode)) {
+            if (!matchId || !wallet) return;
+            const res = await backendClient.sendAction({
+              match_id: matchId,
+              player_wallet: wallet,
+              action: 'ShootSelf',
+            });
+            if (!res.success) {
+              set({ relayError: res.error || 'Failed to shoot self' });
+            }
+            return;
+          }
+
+          if (!isPlayerTurn || chamber.length === 0) {
             return;
           }
 
@@ -673,9 +734,20 @@ export const useShellShockStore = create<ShellShockState>()(
           }, 1500);
         },
 
-        useItem: (item) => {
+        useItem: async (item) => {
           const state = get();
           if (isRelayMode(state.transportMode)) {
+            const { matchId, wallet } = state;
+            if (!matchId || !wallet) return;
+            const res = await backendClient.sendAction({
+              match_id: matchId,
+              player_wallet: wallet,
+              action: 'UseItem',
+              item_type: item as ItemType,
+            });
+            if (!res.success) {
+              set({ relayError: res.error || `Failed to use ${item}` });
+            }
             return;
           }
 

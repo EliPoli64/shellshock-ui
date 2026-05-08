@@ -66,49 +66,79 @@ export const GameTable: React.FC = () => {
     items, 
     dealerItems, 
     currentShell, 
-    resetPeek 
+    resetPeek,
+    gameMode,
+    players,
+    wallet,
+    turnWallet
   } = useShellShockStore();
+
+  const isPvP = gameMode === 'pvp';
+  const myTurn = isPvP ? turnWallet === wallet : isPlayerTurn;
   
   useEffect(() => { 
     let timer: NodeJS.Timeout; 
-    if (isPlayerTurn && gameStatus === 'playing' && !isAnimating && !isRevealingShells) { 
+    if (myTurn && gameStatus === 'playing' && !isAnimating && !isRevealingShells) { 
       timer = setInterval(() => { 
-        // decrementTimer(); 
+        decrementTimer(); 
       }, 1000); 
     } 
     return () => clearInterval(timer); 
-  }, [isPlayerTurn, gameStatus, isAnimating, isRevealingShells, decrementTimer]); 
+  }, [myTurn, gameStatus, isAnimating, isRevealingShells, decrementTimer]); 
 
   useEffect(() => { 
-    if (!isPlayerTurn && gameStatus === 'playing' && !isAnimating) { 
+    if (!isPvP && !isPlayerTurn && gameStatus === 'playing' && !isAnimating) { 
       void dealerTurn(); 
     } 
-  }, [isPlayerTurn, gameStatus, isAnimating, dealerTurn]); 
+  }, [isPvP, isPlayerTurn, gameStatus, isAnimating, dealerTurn]); 
 
+  // PvP Layout calculations
+  const otherPlayers = isPvP ? players.filter(p => p.wallet !== wallet) : [];
+  
   return ( 
     <div className="absolute inset-0 flex flex-col bg-bg-black overflow-hidden"> 
       <div className="crt-overlay" /> 
       
-      <div className="flex-1 flex flex-col items-center justify-center p-[2vh]"> 
-        <div className="mb-[2vh] flex flex-col items-center"> 
-          <div className="flex items-center gap-[2vw]"> 
-            <h2 className="font-special-elite text-[3vh] text-text-cream mb-[1vh]">THE DEALER</h2> 
-            {dealerHandcuffed && ( 
-              <motion.span 
-                initial={{ scale: 0 }} 
-                animate={{ scale: 1 }} 
-                style={{ fontSize: '4vh' }} 
-                title="Handcuffed" 
-              > 
-                🔗 
-              </motion.span> 
-            )} 
-          </div> 
-          <HealthMasks health={dealerHealth} isPlayer={false} /> 
-          <div className="mt-[2vh]"> 
-            <ItemBubbles items={dealerItems} isDealer={true} /> 
-          </div> 
-        </div> 
+      <div className="flex-1 flex flex-col items-center justify-center p-[2vh] relative"> 
+        {/* Opponents Area */}
+        <div className={`w-full flex justify-center gap-[4vw] mb-[2vh] ${isPvP ? 'flex-wrap px-[2vw]' : 'flex-col items-center'}`}>
+          {!isPvP ? (
+            <div className="flex flex-col items-center"> 
+              <div className="flex items-center gap-[2vw]"> 
+                <h2 className="font-special-elite text-[3vh] text-text-cream mb-[1vh]">THE DEALER</h2> 
+                {dealerHandcuffed && ( 
+                  <motion.span 
+                    initial={{ scale: 0 }} 
+                    animate={{ scale: 1 }} 
+                    style={{ fontSize: '4vh' }} 
+                  > 
+                    🔗 
+                  </motion.span> 
+                )} 
+              </div> 
+              <HealthMasks health={dealerHealth} isPlayer={false} /> 
+              <div className="mt-[2vh]"> 
+                <ItemBubbles items={dealerItems} isDealer={true} /> 
+              </div> 
+            </div>
+          ) : (
+            otherPlayers.map((p, idx) => (
+              <div key={p.wallet} className="flex flex-col items-center min-w-[20vw]">
+                <div className="flex items-center gap-[1vw]">
+                  <h2 className="font-special-elite text-[2vh] text-text-cream mb-[0.5vh] opacity-70">
+                    {p.wallet.slice(0, 4)}...{p.wallet.slice(-4)}
+                  </h2>
+                  {p.handcuffed && <span style={{ fontSize: '2vh' }}>🔗</span>}
+                  {turnWallet === p.wallet && <span className="w-2 h-2 rounded-full bg-neon-yellow animate-pulse" />}
+                </div>
+                <HealthMasks health={p.health} isPlayer={false} />
+                <div className="mt-[1vh]">
+                  <ItemBubbles items={p.items} isDealer={true} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
         
         <motion.div 
           animate={gameStatus === 'shot_animation' && lastShotResult === 'live' ? { 
@@ -116,8 +146,9 @@ export const GameTable: React.FC = () => {
             y: [0, 5, -5, 5, -5, 0], 
             transition: { duration: 0.4 } 
           } : {}} 
-          className="h-[28vh] w-[80vw] lg:w-[60vw] aspect-video bg-table-green rounded-[1vh] border-[0.5vh] border-gray-800 shadow-2xl relative overflow-hidden flex items-center justify-center" 
+          className="h-[28vh] w-[90vw] lg:w-[60vw] aspect-video bg-table-green rounded-[1vh] border-[0.5vh] border-gray-800 shadow-2xl relative overflow-hidden flex items-center justify-center" 
         > 
+          {/* Table Content - Keep same as before but update labels */}
           <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/felt.png')]" /> 
           
           {/* Peek Overlay */} 
@@ -129,6 +160,7 @@ export const GameTable: React.FC = () => {
               className="absolute inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md" 
               onClick={resetPeek} 
             > 
+              {/* ... existing peek UI ... */}
               <motion.div 
                 initial={{ scale: 0.8, rotate: -10 }} 
                 animate={{ scale: 1, rotate: 0 }} 
@@ -137,7 +169,6 @@ export const GameTable: React.FC = () => {
                 <h3 className="font-special-elite text-[3vh] text-text-cream tracking-[0.3em] uppercase opacity-60"> 
                   Inside the chamber... 
                 </h3> 
-                
                 <div className="relative"> 
                   <motion.div 
                     animate={{ 
@@ -157,7 +188,6 @@ export const GameTable: React.FC = () => {
                     </span> 
                   </motion.div> 
                 </div> 
- 
                 <div className="font-special-elite text-neon-yellow text-[2vh] animate-pulse"> 
                   CLICK ANYWHERE TO CLOSE 
                 </div> 
@@ -165,8 +195,8 @@ export const GameTable: React.FC = () => {
             </motion.div> 
           )} 
  
-          {/* Dealer Action Overlay */} 
-          {dealerActionText && ( 
+          {/* Dealer/Opponent Action Overlay */} 
+          {(dealerActionText || (isPvP && !myTurn && gameStatus === 'playing')) && ( 
             <motion.div 
               initial={{ opacity: 0, backgroundColor: 'rgba(0,0,0,0)' }} 
               animate={{ opacity: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} 
@@ -180,15 +210,14 @@ export const GameTable: React.FC = () => {
                 className="text-center px-[2vw]"
               >
                 <h3 className="font-special-elite text-[4vh] text-neon-yellow neon-text uppercase tracking-widest drop-shadow-[0_0_20px_rgba(255,255,0,0.9)]">
-                  {dealerActionText}
+                  {isPvP ? "OPPONENT'S TURN" : dealerActionText}
                 </h3>
               </motion.div> 
             </motion.div> 
           )} 
  
           <div className="text-center z-10 w-full px-[2vw]"> 
- 
-            {isSawActive && !dealerActionText && gameStatus === 'playing' && ( 
+            {isSawActive && gameStatus === 'playing' && ( 
               <motion.div 
                 initial={{ opacity: 0 }} 
                 animate={{ opacity: [0.4, 1, 0.4] }} 
@@ -205,25 +234,25 @@ export const GameTable: React.FC = () => {
                 initial={{ opacity: 0, scale: 0.8 }} 
                 animate={{ opacity: 1, scale: 1 }} 
                 exit={{ opacity: 0, scale: 1.2 }} 
-                className="flex flex-col items-center gap-[4vh]" 
+                className="flex flex-col items-center gap-[2vh]" 
               > 
-                <h3 className="font-special-elite text-[4vh] text-text-cream tracking-widest animate-pulse"> 
+                <h3 className="font-special-elite text-[3vh] text-text-cream tracking-widest animate-pulse"> 
                   LOADING CHAMBER... 
                 </h3> 
                 <div className="flex gap-[10vw]"> 
                   <div className="flex flex-col items-center gap-[1vh]"> 
-                    <div className="w-[4vh] h-[7vh] bg-danger-red rounded-full border-[0.3vh] border-red-900 shadow-[0_0_15px_rgba(139,0,0,0.8)]" /> 
-                    <span className="font-special-elite text-[4vh] text-danger-red">{liveShells} LIVE</span> 
+                    <div className="w-[3vh] h-[5vh] bg-danger-red rounded-full border-[0.3vh] border-red-900 shadow-[0_0_15px_rgba(139,0,0,0.8)]" /> 
+                    <span className="font-special-elite text-[3vh] text-danger-red">{liveShells} LIVE</span> 
                   </div> 
                   <div className="flex flex-col items-center gap-[1vh]"> 
-                    <div className="w-[4vh] h-[7vh] bg-gray-600 rounded-full border-[0.3vh] border-gray-800 shadow-[0_0_15px_rgba(75,85,99,0.5)]" /> 
-                    <span className="font-special-elite text-[4vh] text-gray-400">{blankShells} BLANKS</span> 
+                    <div className="w-[3vh] h-[5vh] bg-gray-600 rounded-full border-[0.3vh] border-gray-800 shadow-[0_0_15px_rgba(75,85,99,0.5)]" /> 
+                    <span className="font-special-elite text-[3vh] text-gray-400">{blankShells} BLANKS</span> 
                   </div> 
                 </div> 
               </motion.div> 
             )} 
  
-            {gameStatus === 'shot_animation' && !dealerActionText && (
+            {gameStatus === 'shot_animation' && (
               <motion.div
                 initial={{ scale: 0.1, opacity: 0, rotate: -10 }}
                 animate={{ 
@@ -257,33 +286,29 @@ export const GameTable: React.FC = () => {
                     textShadow: ['0 0 10px #4b5563', '0 0 20px #9ca3af', '0 0 10px #4b5563']
                   }}
                   transition={{ repeat: Infinity, duration: 0.30 }}
-                  className="font-special-elite text-[10vh] leading-none tracking-tighter italic"
+                  className="font-special-elite text-[8vh] leading-none tracking-tighter italic"
                 >
-                  {lastShotResult === 'live' ? (
-                    <span className="drop-shadow-[0_10px_10px_rgba(0,0,0,0.8)]">BOOM!</span>
-                  ) : (
-                    <span className="drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)]">CLICK...</span>
-                  )}
+                  {lastShotResult === 'live' ? "BOOM!" : "CLICK..."}
                 </motion.div>
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }}
-                  className="font-special-elite text-[4vh] text-text-cream uppercase tracking-[0.8em] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/40 px-[2vh] py-[0.5vh] rounded-full backdrop-blur-sm"
+                  className="font-special-elite text-[3vh] text-text-cream uppercase tracking-[0.4em] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/40 px-[2vh] py-[0.5vh] rounded-full backdrop-blur-sm"
                 >
-                  {lastShotTarget === 'dealer' ? 'Target: Dealer' : 'Target: You'}
+                  {lastShotTarget === wallet ? 'Target: You' : 'Target: Opponent'}
                 </motion.div>
               </motion.div>
             )} 
              
             {gameStatus === 'playing' && !isAnimating && !isRevealingShells && !dealerActionText && ( 
-              <div className="flex flex-col items-center gap-[2vh]"> 
-                <div className="font-special-elite text-[6vh] text-neon-yellow neon-text"> 
-                  {isPlayerTurn ? 'YOUR TURN' : 'DEALER\'S TURN'} 
+              <div className="flex flex-col items-center gap-[1vh]"> 
+                <div className="font-special-elite text-[4vh] text-neon-yellow neon-text"> 
+                  {myTurn ? 'YOUR TURN' : "WAITING..."} 
                 </div> 
-                {isPlayerTurn && ( 
+                {myTurn && ( 
                   <div className="relative flex items-center justify-center"> 
-                    <svg className="w-[12vh] h-[12vh] -rotate-90"> 
+                    <svg className="w-[10vh] h-[10vh] -rotate-90"> 
                       <circle 
                         cx="50%" 
                         cy="50%" 
@@ -302,7 +327,7 @@ export const GameTable: React.FC = () => {
                         strokeLinecap="round" 
                       /> 
                     </svg> 
-                    <div className={`absolute font-special-elite text-[4vh] ${turnTimer <= 5 ? 'text-danger-red animate-pulse' : 'text-text-cream'}`}> 
+                    <div className={`absolute font-special-elite text-[3vh] ${turnTimer <= 5 ? 'text-danger-red animate-pulse' : 'text-text-cream'}`}> 
                       {turnTimer}s 
                     </div> 
                   </div> 
@@ -316,28 +341,19 @@ export const GameTable: React.FC = () => {
           <ShellRack /> 
         </div> 
          
-        <div className="mt-[4vh] flex flex-col items-center"> 
-          <div className="mb-[2vh]"> 
+        <div className="mt-auto mb-[2vh] flex flex-col items-center"> 
+          <div className="mb-[1vh]"> 
             <ItemBubbles items={items} isDealer={false} /> 
           </div> 
           <HealthMasks health={playerHealth} isPlayer={true} /> 
           <div className="flex items-center gap-[2vw] mt-[1vh]"> 
-            <h2 className="font-special-elite text-[3vh] text-text-cream">YOU</h2> 
-            {playerHandcuffed && ( 
-              <motion.span 
-                initial={{ scale: 0 }} 
-                animate={{ scale: 1 }} 
-                style={{ fontSize: '4vh' }} 
-                title="Handcuffed" 
-              > 
-                🔗 
-              </motion.span> 
-            )} 
+            <h2 className="font-special-elite text-[2.5vh] text-text-cream">YOU</h2> 
+            {playerHandcuffed && <span style={{ fontSize: '3vh' }}>🔗</span>} 
           </div> 
         </div> 
       </div> 
        
-      <div className="p-[2vh] mt-[-2vh]"> 
+      <div className="p-[2vh] bg-black/40 backdrop-blur-sm border-t border-gray-800"> 
         <ActionButtons /> 
       </div> 
     </div> 

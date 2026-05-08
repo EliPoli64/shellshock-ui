@@ -3,12 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 import { WalletButton } from '../WalletButton';
 import { soundManager } from '../../utils/soundEffects';
+import { MatchHistory } from './MatchHistory';
 
 export const MainMenu = () => {
   const { startGame, wallet, relayReady, relayConnectionState, openPvpSetup, refreshRelayStatus } =
     useShellShockStore();
   
   const [showHelp, setShowHelp] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     void refreshRelayStatus();
@@ -36,6 +38,16 @@ export const MainMenu = () => {
   const handleCloseHelp = () => {
     soundManager.play('uiClick');
     setShowHelp(false);
+  };
+
+  const handleShowHistory = () => {
+    soundManager.play('uiClick');
+    setShowHistory(true);
+  };
+
+  const handleCloseHistory = () => {
+    soundManager.play('uiClick');
+    setShowHistory(false);
   };
 
   const handlePvpClick = () => {
@@ -131,11 +143,22 @@ export const MainMenu = () => {
           📜 HOW TO PLAY
         </motion.button>
 
+        {wallet && (
+          <motion.button
+            whileHover={{ scale: 1.05, backgroundColor: "rgba(255, 255, 255, 0.1)" }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleShowHistory}
+            className="w-full px-[4vh] py-[2vh] bg-transparent border-[0.4vh] border-gray-700 text-gray-400 font-special-elite text-[2.2vh] shadow-lg transition-all"
+          >
+            📊 BATTLE LOGS
+          </motion.button>
+        )}
+
         <motion.button
           whileHover={canEnterPvp ? { scale: 1.05 } : {}}
           whileTap={canEnterPvp ? { scale: 0.95 } : {}}
           onClick={handlePvpClick}
-          className={`w-full px-8 py-4 border-4 font-special-elite text-xl md:text-2xl shadow-lg transition-all ${
+          className={`w-full px-[4vh] py-[2vh] border-[0.4vh] font-special-elite text-[2.5vh] shadow-lg transition-all ${
             canEnterPvp
               ? 'bg-gradient-to-b from-red-900 to-black border-red-700 text-text-cream hover:from-red-800 hover:to-gray-950'
               : 'cursor-not-allowed border-gray-600 bg-gradient-to-b from-gray-700 to-gray-900 text-gray-400'
@@ -216,6 +239,27 @@ export const MainMenu = () => {
               >
                 GOT IT
               </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* History Modal */}
+      <AnimatePresence>
+        {showHistory && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[100] flex items-center justify-center bg-bg-black/95 backdrop-blur-md p-[4vh]"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-gray-900/80 border-[0.3vh] border-purple-900/50 p-[4vh] rounded-[2vh] max-w-[60vh] w-full max-h-[85vh] overflow-hidden"
+            >
+              <MatchHistory onClose={handleCloseHistory} />
             </motion.div>
           </motion.div>
         )}
