@@ -1,8 +1,7 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 
-export const GameOverScreen: React.FC = () => {
+export const GameOverScreen = () => {
   const { playAgain, leaveTable, roundsWon, roundsLost, totalWon, totalLost } = useShellShockStore();
   
   return (

@@ -1,8 +1,7 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 
-export const RoundEnd: React.FC = () => {
+export const RoundEnd = () => {
   const { playerHealth, dealerHealth, playAgain, leaveTable, roundsWon, roundsLost, totalWon, totalLost } = useShellShockStore();
   
   const isPlayerWinner = playerHealth > dealerHealth;
