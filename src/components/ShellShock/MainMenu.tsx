@@ -15,6 +15,15 @@ export const MainMenu = () => {
   const subtitle = "A Game of Chance. A Dance with Death.";
   const canEnterPvp = Boolean(wallet) && relayReady;
 
+  const handleStartGame = () => {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.warn(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
+    }
+    startGame('pve', 0.01);
+  };
+
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg-black z-50 p-4">
       <div className="crt-overlay" />
@@ -48,7 +57,7 @@ export const MainMenu = () => {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => startGame('pve', 0.01)}
+          onClick={handleStartGame}
           className="w-full px-8 py-4 bg-gradient-to-b from-yellow-700 to-yellow-900 border-4 border-yellow-600 text-text-cream font-special-elite text-xl md:text-2xl shadow-lg hover:from-yellow-600 hover:to-yellow-800 transition-all"
         >
           PLAYER VS DEALER
