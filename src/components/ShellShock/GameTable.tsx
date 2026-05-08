@@ -196,7 +196,7 @@ export const GameTable: React.FC = () => {
           )} 
  
           {/* Dealer/Opponent Action Overlay */} 
-          {(dealerActionText || (isPvP && !myTurn && gameStatus === 'playing')) && ( 
+          {(dealerActionText || (isPvP && !myTurn && gameStatus === 'playing') || (gameMode === 'pve' && !isPlayerTurn && isAnimating)) && ( 
             <motion.div 
               initial={{ opacity: 0, backgroundColor: 'rgba(0,0,0,0)' }} 
               animate={{ opacity: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} 
@@ -210,7 +210,7 @@ export const GameTable: React.FC = () => {
                 className="text-center px-[2vw]"
               >
                 <h3 className="font-special-elite text-[4vh] text-neon-yellow neon-text uppercase tracking-widest drop-shadow-[0_0_20px_rgba(255,255,0,0.9)]">
-                  {isPvP ? "OPPONENT'S TURN" : dealerActionText}
+                  {isPvP ? "OPPONENT'S TURN" : dealerActionText || "DEALER IS THINKING..."}
                 </h3>
               </motion.div> 
             </motion.div> 

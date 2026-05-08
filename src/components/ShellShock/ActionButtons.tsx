@@ -68,66 +68,73 @@ import React from 'react';
            </motion.div>
          ) : showItemMenu ? (
            <ItemMenu key="item-menu" />
-         ) : (
-           isVisible && ( 
-             <motion.div 
-               key="action-buttons"
-               initial={{ opacity: 0, y: 50, scale: 0.9 }} 
-               animate={{ opacity: 1, y: 0, scale: 1 }} 
-               exit={{ opacity: 0, y: 20, scale: 0.95, transition: { duration: 0.2 } }} 
-               className="flex gap-[1.5vw] flex-wrap justify-center" 
-             > 
-               {isPvP ? (
-                 otherPlayers.map(p => (
-                   <motion.button 
-                     key={p.wallet}
-                     whileHover={{ scale: 1.05, y: -2 }} 
-                     whileTap={{ scale: 0.95 }} 
-                     onClick={() => handleShootDealer(p.wallet)} 
-                     className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-danger-red to-red-900 border-red-700 text-text-cream px-[2vh] py-[1.5vh] text-[1.8vh] cursor-pointer"
-                   > 
-                     🔫 SHOOT {p.wallet.slice(0, 4)} 
-                   </motion.button> 
-                 ))
-               ) : (
+         ) : isVisible ? ( 
+           <motion.div 
+             key="action-buttons"
+             initial={{ opacity: 0, y: 50, scale: 0.9 }} 
+             animate={{ opacity: 1, y: 0, scale: 1 }} 
+             exit={{ opacity: 0, y: 20, scale: 0.95, transition: { duration: 0.2 } }} 
+             className="flex gap-[1.5vw] flex-wrap justify-center" 
+           > 
+             {isPvP ? (
+               otherPlayers.map(p => (
                  <motion.button 
+                   key={p.wallet}
                    whileHover={{ scale: 1.05, y: -2 }} 
                    whileTap={{ scale: 0.95 }} 
-                   onClick={() => handleShootDealer()} 
-                   className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-danger-red to-red-900 border-red-700 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
+                   onClick={() => handleShootDealer(p.wallet)} 
+                   className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-danger-red to-red-900 border-red-700 text-text-cream px-[2vh] py-[1.5vh] text-[1.8vh] cursor-pointer"
                  > 
-                   🔫 SHOOT DEALER 
+                   🔫 SHOOT {p.wallet.slice(0, 4)} 
                  </motion.button> 
-               )}
-   
+               ))
+             ) : (
                <motion.button 
                  whileHover={{ scale: 1.05, y: -2 }} 
                  whileTap={{ scale: 0.95 }} 
-                 onClick={handleShootSelf} 
-                 className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-amber-700 to-amber-900 border-amber-600 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
+                 onClick={() => handleShootDealer()} 
+                 className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-danger-red to-red-900 border-red-700 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
                > 
-                 🎯 SHOOT YOURSELF 
+                 🔫 SHOOT DEALER 
                </motion.button> 
-   
-               <motion.button 
-                 whileHover={{ scale: 1.05, y: -2 }} 
-                 whileTap={{ scale: 0.95 }} 
-                 onClick={toggleItemMenu} 
-                 className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-blue-700 to-blue-900 border-blue-600 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
-               > 
-                 🎒 USE ITEM 
-               </motion.button> 
-   
-               <motion.button 
-                 whileHover={{ scale: 1.05, y: -2 }} 
-                 whileTap={{ scale: 0.95 }} 
-                 onClick={handleFold} 
-                 className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-gray-700 to-gray-900 border-gray-600 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
-               > 
-                 🏳️ FOLD 
-               </motion.button> 
-             </motion.div> 
-           )
+             )}
+ 
+             <motion.button 
+               whileHover={{ scale: 1.05, y: -2 }} 
+               whileTap={{ scale: 0.95 }} 
+               onClick={handleShootSelf} 
+               className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-amber-700 to-amber-900 border-amber-600 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
+             > 
+               🎯 SHOOT YOURSELF 
+             </motion.button> 
+ 
+             <motion.button 
+               whileHover={{ scale: 1.05, y: -2 }} 
+               whileTap={{ scale: 0.95 }} 
+               onClick={toggleItemMenu} 
+               className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-blue-700 to-blue-900 border-blue-600 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
+             > 
+               🎒 USE ITEM 
+             </motion.button> 
+ 
+             <motion.button 
+               whileHover={{ scale: 1.05, y: -2 }} 
+               whileTap={{ scale: 0.95 }} 
+               onClick={handleFold} 
+               className="font-special-elite shadow-lg transition-all border-[0.3vh] bg-gradient-to-b from-gray-700 to-gray-900 border-gray-600 text-text-cream px-[3vh] py-[2vh] text-[2.2vh] cursor-pointer"
+             > 
+               🏳️ FOLD 
+             </motion.button> 
+           </motion.div> 
+         ) : (
+           <motion.div
+             key="waiting-msg"
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 0.6 }}
+             className="font-special-elite text-text-cream text-[2vh] tracking-[0.2em] uppercase"
+           >
+             {isAnimating || isRevealingShells ? "Wait..." : !myTurn ? "Opponent's Turn" : ""}
+           </motion.div>
          )} 
        </AnimatePresence> 
      </div> 
