@@ -5,11 +5,12 @@ import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { UnsafeBurnerWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { clusterApiUrl } from '@solana/web3.js';
 
+const network = WalletAdapterNetwork.Devnet;
+
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
-  const network = WalletAdapterNetwork.Devnet;
   const endpoint = useMemo(
     () => import.meta.env.VITE_SOLANA_RPC_HTTP_URL || clusterApiUrl(network),
-    [network],
+    [],
   );
   const wallets = useMemo(() => [new UnsafeBurnerWalletAdapter()], []);
 

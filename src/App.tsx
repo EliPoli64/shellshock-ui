@@ -9,7 +9,7 @@ import { MatchSetup } from './components/ShellShock/MatchSetup';
 import { useShellShockStore } from './store/shellShockStore';
 
 function App() {
-  const { gameStatus } = useShellShockStore();
+  const gameStatus = useShellShockStore((state) => state.gameStatus);
 
   useEffect(() => {
     const enterFullscreen = async () => {
