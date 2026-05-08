@@ -9,24 +9,34 @@ export const SolanaWalletSync = () => {
   const refreshRelayStatus = useShellShockStore((state) => state.refreshRelayStatus);
   const relayConnectionState = useShellShockStore((state) => state.relayConnectionState);
   const resumeRelaySession = useShellShockStore((state) => state.resumeRelaySession);
+  const currentWallet = useShellShockStore((state) => state.wallet);
+  const currentBalance = useShellShockStore((state) => state.solBalance);
 
-  useEffect(() => {
-    void refreshRelayStatus();
-  }, [refreshRelayStatus]);
+  const walletAddress = publicKey?.toBase58() || null;
 
   useEffect(() => {
     let cancelled = false;
 
     const syncWallet = async () => {
-      if (!publicKey) {
-        connectWallet(null, 0);
+      if (!walletAddress) {
+        if (currentWallet !== null) {
+          connectWallet(null, 0);
+        }
         return;
       }
 
-      const lamports = await connection.getBalance(publicKey);
-      if (!cancelled) {
-        connectWallet(publicKey.toBase58(), lamports / 1_000_000_000);
-        void refreshRelayStatus();
+      try {
+        const lamports = await connection.getBalance(publicKey!);
+        const sol = lamports / 1_000_000_000;
+
+        if (!cancelled) {
+          if (currentWallet !== walletAddress || Math.abs(currentBalance - sol) > 0.000001) {
+            connectWallet(walletAddress, sol);
+            void refreshRelayStatus();
+          }
+        }
+      } catch (err) {
+        console.error('Failed to sync wallet balance:', err);
       }
     };
 
@@ -35,13 +45,21 @@ export const SolanaWalletSync = () => {
     return () => {
       cancelled = true;
     };
-  }, [connectWallet, connection, publicKey, refreshRelayStatus]);
+  }, [
+    connection,
+    walletAddress,
+    connectWallet,
+    refreshRelayStatus,
+    currentWallet,
+    currentBalance,
+    publicKey,
+  ]);
 
   useEffect(() => {
-    if (publicKey && relayConnectionState === 'connected') {
+    if (walletAddress && relayConnectionState === 'connected') {
       void resumeRelaySession();
     }
-  }, [publicKey, relayConnectionState, resumeRelaySession]);
+  }, [walletAddress, relayConnectionState, resumeRelaySession]);
 
   return null;
 };

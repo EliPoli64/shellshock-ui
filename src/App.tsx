@@ -10,7 +10,7 @@ import { useShellShockStore } from './store/shellShockStore';
 import { soundManager } from './utils/soundEffects';
 
 function App() {
-  const { gameStatus } = useShellShockStore();
+  const gameStatus = useShellShockStore((state) => state.gameStatus);
 
   useEffect(() => {
     const handleKeyDown = () => {
