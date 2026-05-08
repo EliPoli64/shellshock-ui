@@ -178,7 +178,7 @@ export const MainMenu = () => {
         )}
       </div>
 
-      <div className="absolute bottom-8 right-8">
+      <div className="absolute top-8 right-8">
         <WalletButton />
       </div>
 

@@ -1,5 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { Buffer } from 'buffer';
+import { 
+  Connection, 
+  PublicKey, 
+  Transaction, 
+  TransactionInstruction, 
+  SystemProgram,
+  SendTransactionError
+} from '@solana/web3.js';
 import { soundManager } from '../utils/soundEffects';
 import { relayClient } from '../lib/relayClient';
 import { backendClient } from '../lib/backendClient';
@@ -82,6 +91,7 @@ interface ShellShockState {
   turnWallet: string | null;
   roomUpdatedAt: string | null;
   lastSignature: string | null;
+  isPendingAction: boolean;
 
   players: {
     wallet: string;
@@ -122,6 +132,7 @@ interface ShellShockState {
   reloadShotgun: () => void;
   decrementTimer: () => void;
   resetPeek: () => void;
+  createRoom: (connection: any, wallet: any) => Promise<void>;
 }
 
 const DEFAULT_RELAY_HTTP_URL = import.meta.env.VITE_RELAY_HTTP_URL || 'http://localhost:8080';
@@ -235,6 +246,7 @@ export const useShellShockStore = create<ShellShockState>()(
         turnWallet: null,
         roomUpdatedAt: null,
         lastSignature: null,
+        isPendingAction: false,
 
         players: [],
 
@@ -417,21 +429,65 @@ export const useShellShockStore = create<ShellShockState>()(
                 handcuffed: p.handcuffed || false,
               }));
 
-              set({
-                roomPubkey: message.room_pubkey,
-                roomPhase: message.phase,
-                turnWallet: message.turn_wallet,
-                roomUpdatedAt: message.updated_at,
-                lastSignature: message.last_signature,
-                gameStatus: mapPhaseToGameStatus(message.phase),
-                isSearching: false,
-                players: pvpPlayers,
-              });
+              // Only update state if not currently animating a shot
+              if (get().gameStatus !== 'shot_animation') {
+                set({
+                  roomPubkey: message.room_pubkey,
+                  roomPhase: message.phase,
+                  turnWallet: message.turn_wallet,
+                  roomUpdatedAt: message.updated_at,
+                  lastSignature: message.last_signature,
+                  gameStatus: mapPhaseToGameStatus(message.phase),
+                  isSearching: false,
+                  players: pvpPlayers,
+                  isPendingAction: false, // Clear pending when state update arrives
+                });
+              }
               break;
             case 'room.event':
               if (message.event_type === 'program_logs') {
                 const payload = message.payload as { signature?: string };
                 set({ lastSignature: payload.signature || get().lastSignature });
+              } else if (message.event_type === 'shot_fired') {
+                const payload = message.payload as {
+                  shooter: string;
+                  target: string;
+                  is_live: boolean;
+                  damage: number;
+                  new_health: number;
+                };
+
+                const isLive = payload.is_live;
+                set({
+                  lastShotResult: isLive ? 'live' : 'blank',
+                  lastShotTarget: payload.target === get().wallet ? 'player' : 'dealer',
+                  gameStatus: 'shot_animation',
+                  isAnimating: true,
+                  isPendingAction: false,
+                });
+
+                soundManager.play(isLive ? 'shotLive' : 'shotBlank');
+
+                // After animation, we expect the next room.state to settle everything
+                window.setTimeout(() => {
+                  set({
+                    gameStatus: 'playing',
+                    isAnimating: false,
+                  });
+                }, 1500);
+              } else if (message.event_type === 'item_used') {
+                const payload = message.payload as {
+                  player: string;
+                  item_type: ItemType;
+                };
+                
+                soundManager.play('itemUse');
+                if (payload.player !== get().wallet) {
+                  set({
+                    dealerActionText: `Opponent uses ${payload.item_type}`,
+                  });
+                  window.setTimeout(() => set({ dealerActionText: null }), 1500);
+                }
               }
               break;
             case 'system.error':
@@ -565,18 +621,22 @@ export const useShellShockStore = create<ShellShockState>()(
         },
 
         shootDealer: async () => {
-          const { transportMode, isPlayerTurn, chamber, dealerHealth, shellsRemaining, isSawActive, dealerHandcuffed, matchId, wallet } =
+          const { transportMode, isPlayerTurn, chamber, dealerHealth, shellsRemaining, isSawActive, dealerHandcuffed, matchId, wallet, isPendingAction } =
             get();
           
           if (isRelayMode(transportMode)) {
-            if (!matchId || !wallet) return;
+            if (!matchId || !wallet || isPendingAction) return;
+            set({ isPendingAction: true });
             const res = await backendClient.sendAction({
               match_id: matchId,
               player_wallet: wallet,
               action: 'ShootDealer',
             });
             if (!res.success) {
-              set({ relayError: res.error || 'Failed to shoot dealer' });
+              set({ 
+                relayError: res.error || 'Failed to shoot dealer',
+                isPendingAction: false 
+              });
             }
             return;
           }
@@ -653,17 +713,21 @@ export const useShellShockStore = create<ShellShockState>()(
         },
 
         shootSelf: async () => {
-          const { transportMode, isPlayerTurn, chamber, playerHealth, shellsRemaining, isSawActive, matchId, wallet } = get();
+          const { transportMode, isPlayerTurn, chamber, playerHealth, shellsRemaining, isSawActive, matchId, wallet, isPendingAction } = get();
           
           if (isRelayMode(transportMode)) {
-            if (!matchId || !wallet) return;
+            if (!matchId || !wallet || isPendingAction) return;
+            set({ isPendingAction: true });
             const res = await backendClient.sendAction({
               match_id: matchId,
               player_wallet: wallet,
               action: 'ShootSelf',
             });
             if (!res.success) {
-              set({ relayError: res.error || 'Failed to shoot self' });
+              set({ 
+                relayError: res.error || 'Failed to shoot self',
+                isPendingAction: false 
+              });
             }
             return;
           }
@@ -737,8 +801,9 @@ export const useShellShockStore = create<ShellShockState>()(
         useItem: async (item) => {
           const state = get();
           if (isRelayMode(state.transportMode)) {
-            const { matchId, wallet } = state;
-            if (!matchId || !wallet) return;
+            const { matchId, wallet, isPendingAction } = state;
+            if (!matchId || !wallet || isPendingAction) return;
+            set({ isPendingAction: true });
             const res = await backendClient.sendAction({
               match_id: matchId,
               player_wallet: wallet,
@@ -746,7 +811,10 @@ export const useShellShockStore = create<ShellShockState>()(
               item_type: item as ItemType,
             });
             if (!res.success) {
-              set({ relayError: res.error || `Failed to use ${item}` });
+              set({ 
+                relayError: res.error || `Failed to use ${item}`,
+                isPendingAction: false 
+              });
             }
             return;
           }
@@ -872,10 +940,24 @@ export const useShellShockStore = create<ShellShockState>()(
         setShowItemMenu: (show) => set({ showItemMenu: show }),
 
         decrementTimer: () => {
-          const { transportMode, turnTimer, isPlayerTurn, gameStatus, isAnimating, isRevealingShells, playerHealth, roundsLost, totalLost, betAmount } =
+          const { transportMode, turnTimer, isPlayerTurn, gameStatus, isAnimating, isRevealingShells, playerHealth, roundsLost, totalLost, betAmount, roomUpdatedAt, relayTurnTimeoutSeconds } =
             get();
+          
+          if (isRelayMode(transportMode)) {
+            if (!roomUpdatedAt || gameStatus !== 'playing' || isAnimating) return;
+            
+            const lastUpdate = new Date(roomUpdatedAt).getTime();
+            const now = new Date().getTime();
+            const elapsedSeconds = Math.floor((now - lastUpdate) / 1000);
+            const remaining = Math.max(0, relayTurnTimeoutSeconds - elapsedSeconds);
+            
+            if (remaining !== turnTimer) {
+              set({ turnTimer: remaining });
+            }
+            return;
+          }
+
           if (
-            isRelayMode(transportMode) ||
             !isPlayerTurn ||
             gameStatus !== 'playing' ||
             isAnimating ||
@@ -1159,6 +1241,102 @@ export const useShellShockStore = create<ShellShockState>()(
           }
         },
         resetPeek: () => set({ currentShell: 'unknown' }),
+
+        createRoom: async (connection: Connection, wallet: any) => {
+          const { matchId, betAmount, relayProgramId, opponentWallet } = get();
+          if (!matchId || !relayProgramId || !wallet.publicKey || !opponentWallet) return;
+
+          set({ isPendingAction: true, relayError: null });
+
+          try {
+            const programId = new PublicKey(relayProgramId);
+            
+            // Derive Room PDA using a 32-byte version of matchId to avoid "Max seed length exceeded"
+            // We use the matchId string, but ensure it doesn't exceed 32 bytes for the seed.
+            const matchIdSeed = new TextEncoder().encode(matchId).slice(0, 32);
+            
+            const [roomPubkey] = PublicKey.findProgramAddressSync(
+              [
+                new TextEncoder().encode('room'), 
+                matchIdSeed
+              ],
+              programId
+            );
+
+            // Construct instruction
+            const instruction = new TransactionInstruction({
+              keys: [
+                { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+                { pubkey: new PublicKey(opponentWallet), isSigner: false, isWritable: false },
+                { pubkey: roomPubkey, isSigner: false, isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+              ],
+              programId,
+              data: Buffer.from([
+                0, // instruction index for create_room
+                ...new TextEncoder().encode(matchId), // Data can still contain full ID
+                ...new Uint8Array(new BigUint64Array([BigInt(lamportsFromSol(betAmount))]).buffer),
+              ]),
+            });
+
+            const tx = new Transaction().add(instruction);
+            tx.feePayer = wallet.publicKey;
+            tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+            const signed = await wallet.signTransaction(tx);
+            const signature = await connection.sendRawTransaction(signed.serialize());
+            
+            await connection.confirmTransaction(signature, 'confirmed');
+
+            // Notify relay
+            relayClient.send({
+              type: 'match.room_created',
+              match_id: matchId,
+              room_pubkey: roomPubkey.toBase58(),
+              signature,
+            });
+
+            set({ 
+              roomPubkey: roomPubkey.toBase58(),
+              lastSignature: signature,
+              isPendingAction: false 
+            });
+            
+            soundManager.play('uiClick');
+          } catch (error) {
+            console.error('Failed to create room:', error);
+            
+            let errorMessage = 'Failed to create room on-chain';
+            
+            if (error instanceof SendTransactionError) {
+              const logs = error.logs; // It's usually an array, not a promise
+              console.log('Transaction Logs:', logs);
+              
+              if (logs && logs.length > 0) {
+                // Try to find a specific program error in logs
+                const programError = logs.find(l => l.includes('Program log: Error:'));
+                if (programError) {
+                  errorMessage = `Program Error: ${programError.split('Error: ')[1]}`;
+                } else if (logs.some(l => l.includes('insufficient funds'))) {
+                  errorMessage = 'Insufficient SOL to create room and pay entry fee.';
+                }
+              }
+              
+              if (error.message.includes('Attempt to debit an account but found no record of a prior credit')) {
+                errorMessage = 'Your wallet is empty or not initialized. Please airdrop some Devnet SOL.';
+              } else if (!errorMessage.startsWith('Program Error') && !errorMessage.startsWith('Insufficient')) {
+                errorMessage = `Solana Error: ${error.message}`;
+              }
+            } else if (error instanceof Error) {
+              errorMessage = error.message;
+            }
+
+            set({ 
+              relayError: errorMessage,
+              isPendingAction: false 
+            });
+          }
+        },
       };
     },
     {

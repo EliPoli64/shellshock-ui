@@ -17,7 +17,8 @@ import React from 'react';
      gameMode,
      wallet,
      turnWallet,
-     players
+     players,
+     isPendingAction
    } = useShellShockStore(); 
 
    const isPvP = gameMode === 'pvp';
@@ -25,32 +26,26 @@ import React from 'react';
    const otherPlayers = isPvP ? players.filter(p => p.wallet !== wallet) : [];
  
    const toggleItemMenu = () => { 
+     if (isPendingAction) return;
      soundManager.play('uiClick');
      setShowItemMenu(!showItemMenu); 
    }; 
 
    const handleShootDealer = (targetWallet?: string) => {
+     if (isPendingAction) return;
      soundManager.play('uiClick');
-     if (isPvP) {
-       // In PvP, we need to know who we are shooting
-       // For now, if there's only one opponent, shoot them. 
-       // If multiple, this would need a target selector.
-       const target = targetWallet || otherPlayers[0]?.wallet;
-       if (target) {
-         // This would be a relay message in a real implementation
-         console.log(`Shooting player: ${target}`);
-       }
-     } else {
-       shootDealer();
-     }
+     // In current implementation, shootDealer() in store handles the backend call
+     shootDealer();
    };
 
    const handleShootSelf = () => {
+     if (isPendingAction) return;
      soundManager.play('uiClick');
      shootSelf();
    };
 
    const handleFold = () => {
+     if (isPendingAction) return;
      soundManager.play('uiClick');
      fold();
    };
@@ -60,7 +55,18 @@ import React from 'react';
    return ( 
      <div className="flex flex-col items-center gap-[2vh] mb-[2vh] min-h-[12vh] justify-end"> 
        <AnimatePresence mode="wait"> 
-         {showItemMenu ? (
+         {isPendingAction ? (
+           <motion.div
+             key="pending-action"
+             initial={{ opacity: 0, scale: 0.8 }}
+             animate={{ opacity: 1, scale: 1 }}
+             exit={{ opacity: 0, scale: 1.2 }}
+             className="flex flex-col items-center gap-[1vh]"
+           >
+             <div className="w-[4vh] h-[4vh] border-[0.5vh] border-neon-yellow border-t-transparent rounded-full animate-spin" />
+             <span className="font-special-elite text-neon-yellow text-[2vh] animate-pulse">PROCESSING ACTION...</span>
+           </motion.div>
+         ) : showItemMenu ? (
            <ItemMenu key="item-menu" />
          ) : (
            isVisible && ( 

@@ -7,14 +7,17 @@ export const ItemMenu: React.FC = () => {
   const items = useShellShockStore((state) => state.items); 
   const useItem = useShellShockStore((state) => state.useItem); 
   const isAnimating = useShellShockStore((state) => state.isAnimating); 
+  const isPendingAction = useShellShockStore((state) => state.isPendingAction); 
   const setShowItemMenu = useShellShockStore((state) => state.setShowItemMenu); 
   
   const handleUseItem = (key: string) => {
+    if (isPendingAction) return;
     soundManager.play('uiClick');
     useItem(key);
   };
 
   const handleClose = () => {
+    if (isPendingAction) return;
     soundManager.play('uiClick');
     setShowItemMenu(false);
   };
@@ -41,10 +44,10 @@ export const ItemMenu: React.FC = () => {
           {playerItems.map((item) => ( 
             <motion.button 
               key={item.key} 
-              whileHover={item.count > 0 && !isAnimating ? { scale: 1.05, y: -2 } : {}} 
-              whileTap={item.count > 0 && !isAnimating ? { scale: 0.95 } : {}} 
+              whileHover={item.count > 0 && !isAnimating && !isPendingAction ? { scale: 1.05, y: -2 } : {}} 
+              whileTap={item.count > 0 && !isAnimating && !isPendingAction ? { scale: 0.95 } : {}} 
               onClick={() => handleUseItem(item.key)} 
-              disabled={item.count <= 0 || isAnimating} 
+              disabled={item.count <= 0 || isAnimating || isPendingAction} 
               className="font-special-elite shadow-lg transition-all border-[0.2vh] flex flex-col items-center gap-[0.5vh] rounded-[1vh]" 
               style={{ 
                 padding: '1vh 1.2vh', 
@@ -52,7 +55,7 @@ export const ItemMenu: React.FC = () => {
                 backgroundColor: item.count > 0 ? '#581c87' : '#1f2937', 
                 borderColor: item.count > 0 ? '#9333ea' : '#374151', 
                 color: item.count > 0 ? '#e8e0d4' : '#6b7280', 
-                cursor: item.count > 0 && !isAnimating ? 'pointer' : 'not-allowed', 
+                cursor: item.count > 0 && !isAnimating && !isPendingAction ? 'pointer' : 'not-allowed', 
                 boxShadow: item.count > 0 ? '0 0 1.5vh rgba(147, 51, 234, 0.3)' : 'none' 
               }} 
             > 
