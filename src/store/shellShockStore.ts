@@ -37,7 +37,16 @@ interface ShellShockState {
     saw: number;
     pill: number;
   };
+  dealerItems: {
+    magnifyingGlass: number;
+    beer: number;
+    handcuffs: number;
+    cigarettes: number;
+    saw: number;
+    pill: number;
+  };
   dealerHandcuffed: boolean;
+  playerHandcuffed: boolean;
 
   roundsWon: number;
   roundsLost: number;
@@ -50,6 +59,7 @@ interface ShellShockState {
   showLifiWidget: boolean;
   lastShotResult: 'live' | 'blank' | null;
   lastShotTarget: 'player' | 'dealer' | null;
+  dealerActionText: string | null;
 
   relayHttpUrl: string;
   relayWsUrl: string;
@@ -91,9 +101,10 @@ interface ShellShockState {
   leaveTable: () => void;
   setShowItemMenu: (show: boolean) => void;
   resetTurn: () => void;
-  dealerTurn: () => void;
+  dealerTurn: () => Promise<void>;
   reloadShotgun: () => void;
   decrementTimer: () => void;
+  resetPeek: () => void;
 }
 
 const DEFAULT_RELAY_HTTP_URL = import.meta.env.VITE_RELAY_HTTP_URL || 'http://localhost:8080';
@@ -165,7 +176,16 @@ export const useShellShockStore = create<ShellShockState>()(
           saw: 0,
           pill: 1,
         },
+        dealerItems: {
+          magnifyingGlass: 1,
+          beer: 1,
+          handcuffs: 1,
+          cigarettes: 1,
+          saw: 1,
+          pill: 1,
+        },
         dealerHandcuffed: false,
+        playerHandcuffed: false,
 
         roundsWon: 0,
         roundsLost: 0,
@@ -178,6 +198,7 @@ export const useShellShockStore = create<ShellShockState>()(
         showLifiWidget: false,
         lastShotResult: null,
         lastShotTarget: null,
+        dealerActionText: null,
 
         relayHttpUrl: DEFAULT_RELAY_HTTP_URL,
         relayWsUrl: DEFAULT_RELAY_WS_URL,
@@ -472,6 +493,17 @@ export const useShellShockStore = create<ShellShockState>()(
             return;
           }
 
+          const generateRandomItems = () => ({
+            magnifyingGlass: Math.floor(Math.random() * 3),
+            beer: Math.floor(Math.random() * 3),
+            handcuffs: Math.floor(Math.random() * 2),
+            cigarettes: Math.floor(Math.random() * 3),
+            saw: Math.floor(Math.random() * 2),
+            pill: Math.floor(Math.random() * 2),
+          });
+
+          const startingItems = generateRandomItems();
+
           set({
             gameMode: mode,
             transportMode: 'pve_mock',
@@ -484,15 +516,10 @@ export const useShellShockStore = create<ShellShockState>()(
             isRevealingShells: true,
             turnTimer: 15,
             isSawActive: false,
-            items: {
-              magnifyingGlass: 1,
-              beer: 1,
-              handcuffs: 1,
-              cigarettes: 1,
-              saw: 1,
-              pill: 1,
-            },
+            items: startingItems,
+            dealerItems: { ...startingItems },
             dealerHandcuffed: false,
+            playerHandcuffed: false,
           });
           get().reloadShotgun();
 
@@ -800,111 +827,241 @@ export const useShellShockStore = create<ShellShockState>()(
           });
         },
 
-        dealerTurn: () => {
-          const { transportMode, isPlayerTurn, chamber, playerHealth, dealerHealth, shellsRemaining, isSawActive } =
-            get();
-          if (isRelayMode(transportMode) || isPlayerTurn || chamber.length === 0) {
+        dealerTurn: async () => {
+          const { transportMode, isPlayerTurn, chamber, dealerItems, playerHandcuffed, isSawActive } = get();
+          if (isRelayMode(transportMode) || isPlayerTurn || chamber.length === 0 || get().gameStatus !== 'playing') {
             return;
           }
 
-          window.setTimeout(() => {
-            const shootDealerSelf = Math.random() < 0.3;
-            const result = chamber[0];
-            const newChamber = chamber.slice(1);
-            const newShellsRemaining = shellsRemaining - 1;
-            const isLive = result === 'live';
-            const damage = isSawActive ? 2 : 1;
+          set({ isAnimating: true });
 
-            set((state) => ({
-              lastShotResult: result,
-              lastShotTarget: shootDealerSelf ? 'dealer' : 'player',
-              gameStatus: 'shot_animation',
-              isAnimating: true,
-              shellsRemaining: newShellsRemaining,
-              chamber: newChamber,
-              liveShells: isLive ? state.liveShells - 1 : state.liveShells,
-              blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
-              currentShell: 'unknown',
-            }));
+          const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+          await delay(1000);
 
-            window.setTimeout(() => {
-              if (shootDealerSelf) {
-                if (isLive) {
-                  const newDealerHealth = Math.max(0, dealerHealth - damage);
-                  if (newDealerHealth <= 0) {
-                    set((state) => ({
-                      dealerHealth: 0,
-                      gameStatus: 'round_end',
-                      roundsWon: state.roundsWon + 1,
-                      totalWon: state.totalWon + state.betAmount,
-                      isAnimating: false,
-                      isSawActive: false,
-                    }));
-                  } else {
-                    set({
-                      dealerHealth: newDealerHealth,
-                      isPlayerTurn: true,
-                      gameStatus: 'playing',
-                      isAnimating: false,
-                      turnTimer: 15,
-                      isSawActive: false,
-                    });
-                    if (newShellsRemaining <= 0) {
-                      get().reloadShotgun();
-                    }
-                  }
-                } else {
-                  set({
-                    isPlayerTurn: false,
-                    gameStatus: 'playing',
-                    isAnimating: false,
-                    isSawActive: false,
-                  });
-                  if (newShellsRemaining <= 0) {
-                    get().reloadShotgun();
-                  }
-                }
-              } else {
-                if (isLive) {
-                  const newPlayerHealth = Math.max(0, playerHealth - damage);
-                  if (newPlayerHealth <= 0) {
-                    set((state) => ({
-                      playerHealth: 0,
-                      gameStatus: 'gameover',
-                      roundsLost: state.roundsLost + 1,
-                      totalLost: state.totalLost + state.betAmount,
-                      isAnimating: false,
-                      isSawActive: false,
-                    }));
-                  } else {
-                    set({
-                      playerHealth: newPlayerHealth,
-                      isPlayerTurn: true,
-                      gameStatus: 'playing',
-                      isAnimating: false,
-                      turnTimer: 15,
-                      isSawActive: false,
-                    });
-                    if (newShellsRemaining <= 0) {
-                      get().reloadShotgun();
-                    }
-                  }
-                } else {
-                  set({
-                    isPlayerTurn: true,
-                    gameStatus: 'playing',
-                    isAnimating: false,
-                    turnTimer: 15,
-                    isSawActive: false,
-                  });
-                  if (newShellsRemaining <= 0) {
-                    get().reloadShotgun();
-                  }
-                }
+          const currentDealerItems = { ...dealerItems };
+          let knownShell: 'live' | 'blank' | 'unknown' = 'unknown';
+          let sawUsed = isSawActive;
+
+          const useItems = async () => {
+            let itemsUsedThisTurn = 0;
+            const maxItemsPerTurn = 2;
+
+            let actionTaken = true;
+            while (actionTaken && itemsUsedThisTurn < maxItemsPerTurn) {
+              actionTaken = false;
+              if (itemsUsedThisTurn > 0 && Math.random() < 0.4) break;
+
+              if (currentDealerItems.cigarettes > 0 && get().dealerHealth < 3) {
+                currentDealerItems.cigarettes -= 1;
+                itemsUsedThisTurn += 1;
+                set({
+                  dealerItems: { ...currentDealerItems },
+                  dealerHealth: Math.min(get().dealerHealth + 1, 3),
+                  dealerActionText: 'Dealer uses Cigarettes',
+                });
+                await delay(1500);
+                set({ dealerActionText: null });
+                actionTaken = true;
+                continue;
               }
-            }, 1500);
-          }, 1000);
+
+              if (currentDealerItems.magnifyingGlass > 0 && knownShell === 'unknown') {
+                currentDealerItems.magnifyingGlass -= 1;
+                itemsUsedThisTurn += 1;
+                knownShell = get().chamber[0];
+                set({
+                  dealerItems: { ...currentDealerItems },
+                  dealerActionText: 'Dealer uses Magnifying Glass',
+                });
+                await delay(1500);
+                set({ dealerActionText: null });
+                actionTaken = true;
+                continue;
+              }
+
+              if (currentDealerItems.beer > 0 && knownShell === 'blank') {
+                currentDealerItems.beer -= 1;
+                itemsUsedThisTurn += 1;
+                const ejectedShell = get().chamber[0];
+                const isLive = ejectedShell === 'live';
+                set((state) => ({
+                  dealerItems: { ...currentDealerItems },
+                  chamber: state.chamber.slice(1),
+                  shellsRemaining: state.shellsRemaining - 1,
+                  liveShells: isLive ? state.liveShells - 1 : state.liveShells,
+                  blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
+                  dealerActionText: 'Dealer uses Beer (Ejected a shell)',
+                }));
+                knownShell = 'unknown';
+                await delay(1500);
+                set({ dealerActionText: null });
+                if (get().shellsRemaining <= 0) get().reloadShotgun();
+                actionTaken = true;
+                continue;
+              }
+
+              if (currentDealerItems.saw > 0 && knownShell === 'live' && !sawUsed) {
+                currentDealerItems.saw -= 1;
+                itemsUsedThisTurn += 1;
+                sawUsed = true;
+                set({
+                  dealerItems: { ...currentDealerItems },
+                  isSawActive: true,
+                  dealerActionText: 'Dealer uses Saw',
+                });
+                await delay(1500);
+                set({ dealerActionText: null });
+                actionTaken = true;
+                continue;
+              }
+
+              if (currentDealerItems.handcuffs > 0 && !get().playerHandcuffed) {
+                currentDealerItems.handcuffs -= 1;
+                itemsUsedThisTurn += 1;
+                set({
+                  dealerItems: { ...currentDealerItems },
+                  playerHandcuffed: true,
+                  dealerActionText: 'Dealer uses Handcuffs',
+                });
+                await delay(1500);
+                set({ dealerActionText: null });
+                actionTaken = true;
+                continue;
+              }
+
+              if (currentDealerItems.pill > 0 && get().dealerHealth <= 1) {
+                currentDealerItems.pill -= 1;
+                itemsUsedThisTurn += 1;
+                const heal = Math.random() < 0.5;
+                const newHealth = heal ? Math.min(get().dealerHealth + 2, 3) : Math.max(get().dealerHealth - 1, 0);
+
+                set({
+                  dealerItems: { ...currentDealerItems },
+                  dealerHealth: newHealth,
+                  dealerActionText: heal ? 'Dealer uses Pill (Healed!)' : 'Dealer uses Pill (Damaged!)',
+                });
+                await delay(1500);
+                set({ dealerActionText: null });
+
+                if (newHealth <= 0) {
+                  set((state) => ({
+                    gameStatus: 'round_end',
+                    roundsWon: state.roundsWon + 1,
+                    totalWon: state.totalWon + state.betAmount,
+                    isAnimating: false,
+                  }));
+                  return false;
+                }
+                actionTaken = true;
+                continue;
+              }
+            }
+            return true;
+          };
+
+          const continueTurn = await useItems();
+          if (!continueTurn) return;
+
+          const chamberArray = get().chamber;
+          const nextShell = chamberArray[0];
+          const isLive = nextShell === 'live';
+          const damage = get().isSawActive ? 2 : 1;
+
+          let shootSelf = false;
+          if (knownShell === 'live' as any) {
+            shootSelf = false;
+          } else if (knownShell === 'blank' as any) {
+            shootSelf = true;
+          } else {
+            const liveProb = get().liveShells / get().shellsRemaining;
+            shootSelf = liveProb < 0.25;
+          }
+
+          set((state) => ({
+            lastShotResult: nextShell,
+            lastShotTarget: shootSelf ? 'dealer' : 'player',
+            gameStatus: 'shot_animation',
+            shellsRemaining: state.shellsRemaining - 1,
+            chamber: state.chamber.slice(1),
+            liveShells: isLive ? state.liveShells - 1 : state.liveShells,
+            blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
+            currentShell: 'unknown',
+          }));
+
+          await delay(1500);
+
+          if (shootSelf) {
+            if (isLive) {
+              const newDealerHealth = Math.max(0, get().dealerHealth - damage);
+              if (newDealerHealth <= 0) {
+                set((state) => ({
+                  dealerHealth: 0,
+                  gameStatus: 'round_end',
+                  roundsWon: state.roundsWon + 1,
+                  totalWon: state.totalWon + state.betAmount,
+                  isAnimating: false,
+                  isSawActive: false,
+                }));
+              } else {
+                const shouldPassTurn = !playerHandcuffed;
+                set({
+                  dealerHealth: newDealerHealth,
+                  isPlayerTurn: shouldPassTurn,
+                  playerHandcuffed: false,
+                  gameStatus: 'playing',
+                  isAnimating: false,
+                  turnTimer: 15,
+                  isSawActive: false,
+                });
+                if (get().shellsRemaining <= 0) get().reloadShotgun();
+              }
+            } else {
+              set({
+                isPlayerTurn: false,
+                gameStatus: 'playing',
+                isAnimating: false,
+                isSawActive: false,
+              });
+              if (get().shellsRemaining <= 0) get().reloadShotgun();
+            }
+          } else if (isLive) {
+            const newPlayerHealth = Math.max(0, get().playerHealth - damage);
+            if (newPlayerHealth <= 0) {
+              set((state) => ({
+                playerHealth: 0,
+                gameStatus: 'gameover',
+                roundsLost: state.roundsLost + 1,
+                totalLost: state.totalLost + state.betAmount,
+                isAnimating: false,
+                isSawActive: false,
+              }));
+            } else {
+              const shouldPassTurn = !playerHandcuffed;
+              set({
+                playerHealth: newPlayerHealth,
+                isPlayerTurn: shouldPassTurn,
+                playerHandcuffed: false,
+                gameStatus: 'playing',
+                isAnimating: false,
+                turnTimer: 15,
+                isSawActive: false,
+              });
+              if (get().shellsRemaining <= 0) get().reloadShotgun();
+            }
+          } else {
+            const shouldPassTurn = !playerHandcuffed;
+            set({
+              isPlayerTurn: shouldPassTurn,
+              playerHandcuffed: false,
+              gameStatus: 'playing',
+              isAnimating: false,
+              turnTimer: 15,
+              isSawActive: false,
+            });
+            if (get().shellsRemaining <= 0) get().reloadShotgun();
+          }
         },
+        resetPeek: () => set({ currentShell: 'unknown' }),
       };
     },
     {
