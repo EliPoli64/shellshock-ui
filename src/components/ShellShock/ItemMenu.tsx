@@ -1,8 +1,7 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 
-export const ItemMenu: React.FC = () => {
+export const ItemMenu = () => {
   const { items, useItem, isAnimating } = useShellShockStore();
   
   const itemList = [

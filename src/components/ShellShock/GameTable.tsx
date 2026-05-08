@@ -1,14 +1,16 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 import { ActionButtons } from './ActionButtons';
 import { HealthMasks } from './HealthMasks';
 import { ShellRack } from './ShellRack';
 
-export const GameTable: React.FC = () => {
+export const GameTable = () => {
   const { 
     playerHealth, 
     dealerHealth, 
+    gameMode,
+    wallet,
     isPlayerTurn, 
     gameStatus,
     lastShotResult,
@@ -18,6 +20,10 @@ export const GameTable: React.FC = () => {
     liveShells,
     blankShells,
     turnTimer,
+    relayConnectionState,
+    roomPhase,
+    roomPubkey,
+    turnWallet,
     decrementTimer,
     dealerTurn
   } = useShellShockStore();
@@ -33,14 +39,32 @@ export const GameTable: React.FC = () => {
   }, [isPlayerTurn, gameStatus, isAnimating, isRevealingShells, decrementTimer]);
 
   useEffect(() => {
-    if (!isPlayerTurn && gameStatus === 'playing' && !isAnimating) {
+    if (gameMode === 'pve' && !isPlayerTurn && gameStatus === 'playing' && !isAnimating) {
       dealerTurn();
     }
-  }, [isPlayerTurn, gameStatus, isAnimating, dealerTurn]);
+  }, [dealerTurn, gameMode, gameStatus, isAnimating, isPlayerTurn]);
+
+  const isWalletTurn = turnWallet ? turnWallet === wallet : isPlayerTurn;
+  const turnLabel =
+    gameMode === 'pvp'
+      ? isWalletTurn
+        ? 'YOUR TURN'
+        : 'OPPONENT TURN'
+      : isPlayerTurn
+        ? 'YOUR TURN'
+        : 'DEALER\'S TURN';
 
   return (
     <div className="absolute inset-0 flex flex-col bg-bg-black">
       <div className="crt-overlay" />
+
+      {gameMode === 'pvp' && (
+        <div className="absolute left-4 top-4 z-20 border border-gray-700 bg-black/80 px-4 py-3 font-special-elite text-xs text-text-cream">
+          <p>Relay: {relayConnectionState}</p>
+          <p>Phase: {roomPhase || 'idle'}</p>
+          <p className="max-w-56 break-all">Room: {roomPubkey || 'pending'}</p>
+        </div>
+      )}
       
       <div className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 lg:p-6">
         <div className="mb-2 sm:mb-4">
@@ -98,9 +122,9 @@ export const GameTable: React.FC = () => {
             {gameStatus === 'playing' && !isAnimating && !isRevealingShells && (
               <div className="flex flex-col items-center gap-2">
                 <div className="font-special-elite text-[3vh] sm:text-[4vh] md:text-[5vh] lg:text-[6vh] text-neon-yellow neon-text">
-                  {isPlayerTurn ? 'YOUR TURN' : 'DEALER\'S TURN'}
+                  {turnLabel}
                 </div>
-                {isPlayerTurn && (
+                {isWalletTurn && (
                   <div className="relative flex items-center justify-center">
                     <svg className="w-[10vh] h-[10vh] sm:w-[12vh] sm:h-[12vh] -rotate-90">
                       <circle

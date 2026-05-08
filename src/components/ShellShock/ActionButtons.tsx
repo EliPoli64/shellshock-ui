@@ -1,10 +1,10 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 import { ItemMenu } from './ItemMenu';
 
-export const ActionButtons: React.FC = () => {
+export const ActionButtons = () => {
   const { 
+    gameMode,
     isPlayerTurn, 
     shootDealer, 
     shootSelf, 
@@ -19,11 +19,18 @@ export const ActionButtons: React.FC = () => {
     setShowItemMenu(!showItemMenu);
   };
 
-  const isDisabled = !isPlayerTurn || isAnimating || isRevealingShells;
+  const isPvpLocked = gameMode === 'pvp';
+  const isDisabled = isPvpLocked || !isPlayerTurn || isAnimating || isRevealingShells;
 
   return (
     <div className="flex flex-col items-center gap-4 sm:gap-6 mb-8">
-      {showItemMenu && <ItemMenu />}
+      {showItemMenu && !isPvpLocked && <ItemMenu />}
+      {isPvpLocked && (
+        <div className="max-w-2xl border border-gray-700 bg-black/80 px-4 py-3 text-center font-special-elite text-sm text-gray-300">
+          PvP relay mode is connected. This screen now waits for real on-chain actions instead of
+          simulating local turns.
+        </div>
+      )}
       
       <div className="flex gap-3 sm:gap-4 flex-wrap justify-center">
         <motion.button

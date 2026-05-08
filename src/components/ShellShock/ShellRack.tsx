@@ -1,8 +1,7 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 
-export const ShellRack: React.FC = () => {
+export const ShellRack = () => {
   const { liveShells, blankShells, isRevealingShells } = useShellShockStore();
   
   return (
