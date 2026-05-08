@@ -1008,6 +1008,8 @@ export const useShellShockStore = create<ShellShockState>()(
             currentShell: 'unknown',
           }));
 
+          soundManager.play(isLive ? 'shotLive' : 'shotBlank');
+
           await delay(1500);
 
           if (shootSelf) {
