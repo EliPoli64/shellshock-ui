@@ -139,7 +139,7 @@ export const GameTable: React.FC = () => {
     let timer: NodeJS.Timeout; 
     if (myTurn && gameStatus === 'playing' && !isAnimating && !isRevealingShells) { 
       timer = setInterval(() => { 
-        //decrementTimer(); 
+        decrementTimer(); 
       }, 1000); 
     } 
     return () => clearInterval(timer); 
@@ -422,8 +422,55 @@ export const GameTable: React.FC = () => {
                   </div> 
                 </motion.div> 
               )} 
+              {!isAnimating && !isRevealingShells && !dealerActionText && gameStatus !== 'shot_animation' && ( 
+                <motion.div 
+                  key="turn-indicator"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 200 }}
+                  className="flex flex-col items-center gap-[1vh]" 
+                > 
+                  <motion.div 
+                    animate={myTurn ? { scale: [1, 1.05, 1] } : {}}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                    className={`font-special-elite text-[5vh] font-bold ${myTurn ? 'text-neon-yellow neon-text' : 'text-gray-400'}`}
+                  > 
+                    {myTurn ? 'YOUR TURN' : "WAITING..."} 
+                  </motion.div> 
+                  {myTurn && ( 
+                    <div className="relative flex items-center justify-center"> 
+                      <svg className="w-[12vh] h-[12vh] -rotate-90"> 
+                        <circle 
+                          cx="50%" 
+                          cy="50%" 
+                          r="40%" 
+                          className="fill-none stroke-gray-700 stroke-[0.7vh]" 
+                        /> 
+                        <motion.circle 
+                          cx="50%" 
+                          cy="50%" 
+                          r="40%" 
+                          className={`fill-none stroke-[0.7vh] ${turnTimer <= 5 ? 'stroke-danger-red' : 'stroke-neon-yellow'}`} 
+                          pathLength={100} 
+                          strokeDasharray="100 100" 
+                          animate={{ strokeDashoffset: 100 - ((turnTimer - 1)/ 14) * 100 }} 
+                          transition={{ duration: 1, ease: "linear" }} 
+                          strokeLinecap="round" 
+                        /> 
+                      </svg> 
+                      <motion.div 
+                        animate={turnTimer <= 5 ? { scale: [1, 1.1, 1] } : {}}
+                        transition={{ repeat: Infinity, duration: 0.5 }}
+                        className={`absolute font-special-elite text-[4vh] font-bold ${turnTimer <= 5 ? 'text-danger-red' : 'text-text-cream'}`}
+                      > 
+                        {turnTimer}s 
+                      </motion.div> 
+                    </div> 
+                  )} 
+                </motion.div> 
+              )}
  
-              {gameStatus === 'shot_animation' && (
+              {(gameStatus === 'shot_animation') && (
                 <motion.div
                   key="shot"
                   initial={{ scale: 0.1, opacity: 0, rotate: -10 }}
@@ -473,53 +520,7 @@ export const GameTable: React.FC = () => {
                 </motion.div>
               )} 
               
-              {gameStatus === 'playing' && !isAnimating && !isRevealingShells && !dealerActionText && ( 
-                <motion.div 
-                  key="turn-indicator"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200 }}
-                  className="flex flex-col items-center gap-[1vh]" 
-                > 
-                  <motion.div 
-                    animate={myTurn ? { scale: [1, 1.05, 1] } : {}}
-                    transition={{ repeat: Infinity, duration: 1.5 }}
-                    className={`font-special-elite text-[5vh] font-bold ${myTurn ? 'text-neon-yellow neon-text' : 'text-gray-400'}`}
-                  > 
-                    {myTurn ? 'YOUR TURN' : "WAITING..."} 
-                  </motion.div> 
-                  {myTurn && ( 
-                    <div className="relative flex items-center justify-center"> 
-                      <svg className="w-[12vh] h-[12vh] -rotate-90"> 
-                        <circle 
-                          cx="50%" 
-                          cy="50%" 
-                          r="40%" 
-                          className="fill-none stroke-gray-700 stroke-[0.7vh]" 
-                        /> 
-                        <motion.circle 
-                          cx="50%" 
-                          cy="50%" 
-                          r="40%" 
-                          className={`fill-none stroke-[0.7vh] ${turnTimer <= 5 ? 'stroke-danger-red' : 'stroke-neon-yellow'}`} 
-                          pathLength={100} 
-                          strokeDasharray="100 100" 
-                          animate={{ strokeDashoffset: 100 - ((turnTimer - 1)/ 14) * 100 }} 
-                          transition={{ duration: 1, ease: "linear" }} 
-                          strokeLinecap="round" 
-                        /> 
-                      </svg> 
-                      <motion.div 
-                        animate={turnTimer <= 5 ? { scale: [1, 1.1, 1] } : {}}
-                        transition={{ repeat: Infinity, duration: 0.5 }}
-                        className={`absolute font-special-elite text-[4vh] font-bold ${turnTimer <= 5 ? 'text-danger-red' : 'text-text-cream'}`}
-                      > 
-                        {turnTimer}s 
-                      </motion.div> 
-                    </div> 
-                  )} 
-                </motion.div> 
-              )} 
+              
             </AnimatePresence>
           </div> 
         </motion.div> 

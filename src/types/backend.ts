@@ -17,13 +17,31 @@ export interface GameStateUpdate {
   items: DealerItems;
   dealer_items: DealerItems;
   is_player_turn: boolean;
+  /** Mirrors the Rust GameState.is_saw_active field. Cleared after every shot and on Reload. */
+  is_saw_active: boolean;
   game_status: 'playing' | 'round_end' | 'gameover';
+  /**
+   * Full ordered chamber array returned by the server. Present on every response so the
+   * client array stays in sync (e.g. Beer ejects chamber[0] in Rust; the client must
+   * update its local copy rather than derive it).
+   */
+  chamber?: ('live' | 'blank')[];
+  /** Set only when the player used a MagnifyingGlass; reveals the next shell type. */
   chamber_peek?: 'live' | 'blank';
+  /** Populated only when the action triggered an automatic Reload (chamber ran empty). */
+  reload_info?: {
+    live_shells: number;
+    blank_shells: number;
+    shells_remaining: number;
+  };
+  /**
+   * Summary of the action the server just processed. Matches the Rust ActionResult fields:
+   * description, is_live, damage, reload. There is no item_effect field in Rust.
+   */
   last_action_result?: {
     type: GameAction;
     is_live?: boolean;
     damage?: number;
-    item_effect?: string;
   };
 }
 

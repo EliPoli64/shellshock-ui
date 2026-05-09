@@ -68,7 +68,21 @@ class BackendClient {
     }
   }
 
-  async startPvEGame(wallet: string, bet: number): Promise<{ success: boolean; match_id?: string; initial_state?: any; error?: string }> {
+  async startPvEGame(wallet: string, bet: number): Promise<{
+    success: boolean;
+    match_id?: string;
+    initial_state?: {
+      player_health: number;
+      dealer_health: number;
+      shells_remaining: number;
+      live_shells: number;
+      blank_shells: number;
+      items: DealerItems;
+      dealer_items: DealerItems;
+      is_player_turn: boolean;
+    };
+    error?: string;
+  }> {
     try {
       const response = await fetch(`${this.baseUrl}/match/pve/start`, {
         method: 'POST',
