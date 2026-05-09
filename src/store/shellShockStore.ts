@@ -605,9 +605,9 @@ export const useShellShockStore = create<ShellShockState>()(
         },
 
         shootDealer: async () => {
-          const { transportMode, matchId, wallet, isPendingAction, isPlayerTurn, gameStatus, isAnimating } = get();
+          const { transportMode, matchId, wallet, isPendingAction, isPlayerTurn, gameStatus, isAnimating, isRevealingShells } = get();
           
-          if (!matchId || !wallet || isPendingAction || !isPlayerTurn || gameStatus !== 'playing' || isAnimating) return;
+          if (!matchId || !wallet || isPendingAction || !isPlayerTurn || gameStatus !== 'playing' || isAnimating || isRevealingShells) return;
 
           set({ isPendingAction: true });
           const res = await backendClient.sendAction({
@@ -619,20 +619,24 @@ export const useShellShockStore = create<ShellShockState>()(
           if (res.success && res.state_update) {
             const update = res.state_update;
             const result = update.last_action_result;
+            const isLive = result?.is_live;
             
-            // Trigger animation
-            set({
-              lastShotResult: result?.is_live ? 'live' : 'blank',
+            // Trigger animation and update shell counts immediately
+            set(state => ({
+              lastShotResult: isLive ? 'live' : 'blank',
               lastShotTarget: 'dealer',
               gameStatus: 'shot_animation',
               isAnimating: true,
               isPendingAction: false,
-            });
+              liveShells: isLive ? state.liveShells - 1 : state.liveShells,
+              blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
+              shellsRemaining: state.shellsRemaining - 1,
+            }));
 
-            soundManager.play(result?.is_live ? 'shotLive' : 'shotBlank');
+            soundManager.play(isLive ? 'shotLive' : 'shotBlank');
 
             window.setTimeout(() => {
-              const wasReloaded = update.last_action_result?.item_effect === "Shotgun reloaded!";
+              const wasReloaded = update.last_action_result?.item_effect?.includes("reloaded");
               const isGameOver = update.game_status === 'gameover';
               
               set({
@@ -646,10 +650,11 @@ export const useShellShockStore = create<ShellShockState>()(
                 isPlayerTurn: update.is_player_turn,
                 gameStatus: update.game_status as GameStatus,
                 isAnimating: false,
-                isSawActive: false,
+                isSawActive: update.is_saw_active,
+                playerHandcuffed: update.player_handcuffed,
+                dealerHandcuffed: update.dealer_handcuffed,
                 turnTimer: update.turn_timer ?? 15,
-                isRevealingShells: wasReloaded ? true : get().isRevealingShells,
-                dealerActionText: wasReloaded ? "SHOTGUN RELOADED" : get().dealerActionText
+                // Removed isRevealingShells and dealerActionText from here to delay them
               });
 
               if (isGameOver) {
@@ -671,10 +676,16 @@ export const useShellShockStore = create<ShellShockState>()(
               if (wasReloaded) {
                 window.setTimeout(() => {
                   set({ 
-                    isRevealingShells: false,
-                    dealerActionText: null
+                    isRevealingShells: true,
+                    dealerActionText: "SHOTGUN RELOADED"
                   });
-                }, 3000);
+                  window.setTimeout(() => {
+                    set({ 
+                      isRevealingShells: false,
+                      dealerActionText: null
+                    });
+                  }, 3000);
+                }, 1000);
               }
             }, 1500);
           } else {
@@ -686,9 +697,9 @@ export const useShellShockStore = create<ShellShockState>()(
         },
 
         shootSelf: async () => {
-          const { matchId, wallet, isPendingAction, isPlayerTurn, gameStatus, isAnimating } = get();
+          const { matchId, wallet, isPendingAction, isPlayerTurn, gameStatus, isAnimating, isRevealingShells } = get();
           
-          if (!matchId || !wallet || isPendingAction || !isPlayerTurn || gameStatus !== 'playing' || isAnimating) return;
+          if (!matchId || !wallet || isPendingAction || !isPlayerTurn || gameStatus !== 'playing' || isAnimating || isRevealingShells) return;
 
           set({ isPendingAction: true });
           const res = await backendClient.sendAction({
@@ -700,19 +711,24 @@ export const useShellShockStore = create<ShellShockState>()(
           if (res.success && res.state_update) {
             const update = res.state_update;
             const result = update.last_action_result;
+            const isLive = result?.is_live;
             
-            set({
-              lastShotResult: result?.is_live ? 'live' : 'blank',
+            // Trigger animation and update shell counts immediately
+            set(state => ({
+              lastShotResult: isLive ? 'live' : 'blank',
               lastShotTarget: 'player',
               gameStatus: 'shot_animation',
               isAnimating: true,
               isPendingAction: false,
-            });
+              liveShells: isLive ? state.liveShells - 1 : state.liveShells,
+              blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
+              shellsRemaining: state.shellsRemaining - 1,
+            }));
 
-            soundManager.play(result?.is_live ? 'shotLive' : 'shotBlank');
+            soundManager.play(isLive ? 'shotLive' : 'shotBlank');
 
             window.setTimeout(() => {
-              const wasReloaded = update.last_action_result?.item_effect === "Shotgun reloaded!";
+              const wasReloaded = update.last_action_result?.item_effect?.includes("reloaded");
               const isGameOver = update.game_status === 'gameover';
 
               set({
@@ -726,10 +742,11 @@ export const useShellShockStore = create<ShellShockState>()(
                 isPlayerTurn: update.is_player_turn,
                 gameStatus: update.game_status as GameStatus,
                 isAnimating: false,
-                isSawActive: false,
+                isSawActive: update.is_saw_active,
+                playerHandcuffed: update.player_handcuffed,
+                dealerHandcuffed: update.dealer_handcuffed,
                 turnTimer: update.turn_timer ?? 15,
-                isRevealingShells: wasReloaded ? true : get().isRevealingShells,
-                dealerActionText: wasReloaded ? "SHOTGUN RELOADED" : get().dealerActionText
+                // Removed isRevealingShells and dealerActionText from here to delay them
               });
 
               if (isGameOver) {
@@ -751,10 +768,16 @@ export const useShellShockStore = create<ShellShockState>()(
               if (wasReloaded) {
                 window.setTimeout(() => {
                   set({ 
-                    isRevealingShells: false,
-                    dealerActionText: null
+                    isRevealingShells: true,
+                    dealerActionText: "SHOTGUN RELOADED"
                   });
-                }, 3000);
+                  window.setTimeout(() => {
+                    set({ 
+                      isRevealingShells: false,
+                      dealerActionText: null
+                    });
+                  }, 3000);
+                }, 1000);
               }
             }, 1500);
           } else {
@@ -766,9 +789,9 @@ export const useShellShockStore = create<ShellShockState>()(
         },
 
         useItem: async (item) => {
-          const { matchId, wallet, isPendingAction, isPlayerTurn, gameStatus, isAnimating } = get();
+          const { matchId, wallet, isPendingAction, isPlayerTurn, gameStatus, isAnimating, isRevealingShells } = get();
           
-          if (!matchId || !wallet || isPendingAction || !isPlayerTurn || gameStatus !== 'playing' || isAnimating) return;
+          if (!matchId || !wallet || isPendingAction || !isPlayerTurn || gameStatus !== 'playing' || isAnimating || isRevealingShells) return;
 
           set({ isPendingAction: true });
           const res = await backendClient.sendAction({
@@ -783,10 +806,12 @@ export const useShellShockStore = create<ShellShockState>()(
             soundManager.play('itemUse');
 
             const itemEffect = update.last_action_result?.item_effect;
-            if (item === 'magnifyingGlass' && itemEffect) {
-              set({ dealerActionText: `PEEK RESULT: ${itemEffect.toUpperCase()}` });
+            if (itemEffect) {
+              set({ dealerActionText: itemEffect.toUpperCase() });
               window.setTimeout(() => set({ dealerActionText: null }), 3000);
             }
+
+            const wasReloaded = itemEffect?.includes("reloaded");
 
             set({
               playerHealth: update.player_health,
@@ -798,10 +823,19 @@ export const useShellShockStore = create<ShellShockState>()(
               dealerItems: update.dealer_items,
               isPlayerTurn: update.is_player_turn,
               currentShell: update.chamber_peek || 'unknown',
-              isSawActive: update.last_action_result?.item_effect === 'saw_active',
+              isSawActive: update.is_saw_active,
+              playerHandcuffed: update.player_handcuffed,
+              dealerHandcuffed: update.dealer_handcuffed,
               turnTimer: update.turn_timer ?? 15,
               isPendingAction: false,
+              isRevealingShells: wasReloaded ? true : get().isRevealingShells
             });
+
+            if (wasReloaded) {
+              window.setTimeout(() => {
+                set({ isRevealingShells: false });
+              }, 3000);
+            }
           } else {
             set({ 
               relayError: res.error || `Failed to use ${item}`,
@@ -811,13 +845,13 @@ export const useShellShockStore = create<ShellShockState>()(
         },
 
         fold: async () => {
-          const { transportMode, matchId, wallet, isPendingAction, isPlayerTurn, gameStatus, isAnimating } = get();
+          const { transportMode, matchId, wallet, isPendingAction, isPlayerTurn, gameStatus, isAnimating, isRevealingShells } = get();
           
           if (isRelayMode(transportMode)) {
             return;
           }
 
-          if (!matchId || !wallet || isPendingAction || !isPlayerTurn || gameStatus !== 'playing' || isAnimating) return;
+          if (!matchId || !wallet || isPendingAction || !isPlayerTurn || gameStatus !== 'playing' || isAnimating || isRevealingShells) return;
 
           set({ isPendingAction: true });
           const res = await backendClient.sendAction({
@@ -924,6 +958,9 @@ export const useShellShockStore = create<ShellShockState>()(
                 items: update.items,
                 dealerItems: update.dealer_items,
                 isPlayerTurn: update.is_player_turn,
+                isSawActive: update.is_saw_active,
+                playerHandcuffed: update.player_handcuffed,
+                dealerHandcuffed: update.dealer_handcuffed,
                 gameStatus: update.game_status as GameStatus,
                 isPendingAction: false,
                 turnTimer: 15,
@@ -985,12 +1022,16 @@ export const useShellShockStore = create<ShellShockState>()(
                 const target = action.type === 'ShootDealer' ? 'dealer' : 'player';
                 const isLive = action.is_live;
                 
-                set({
+                // Update shell counts immediately for dealer shots too
+                set(state => ({
                   lastShotResult: isLive ? 'live' : 'blank',
                   lastShotTarget: target,
                   gameStatus: 'shot_animation',
                   isAnimating: true,
-                });
+                  liveShells: isLive ? state.liveShells - 1 : state.liveShells,
+                  blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
+                  shellsRemaining: state.shellsRemaining - 1,
+                }));
 
                 soundManager.play(isLive ? 'shotLive' : 'shotBlank');
                 await delay(1500);
@@ -1006,9 +1047,11 @@ export const useShellShockStore = create<ShellShockState>()(
                 }
                 
                 set({ gameStatus: 'playing' });
+                await delay(1000); // Delay after shot animation ends
               } else if (action.type === 'Reload') {
                 set({ 
                   isRevealingShells: true,
+                  dealerActionText: "SHOTGUN RELOADED"
                 });
                 
                 window.setTimeout(() => {
@@ -1018,6 +1061,12 @@ export const useShellShockStore = create<ShellShockState>()(
                   });
                 }, 3000);
                 await delay(3000);
+              } else if (action.type === 'Info') {
+                if (action.result) {
+                  set({ dealerActionText: action.result.toUpperCase() });
+                  await delay(2000);
+                  set({ dealerActionText: null });
+                }
               }
             }
 
@@ -1035,7 +1084,9 @@ export const useShellShockStore = create<ShellShockState>()(
                 isPlayerTurn: update.is_player_turn,
                 gameStatus: update.game_status as GameStatus,
                 isAnimating: false,
-                isSawActive: false,
+                isSawActive: update.is_saw_active,
+                playerHandcuffed: update.player_handcuffed,
+                dealerHandcuffed: update.dealer_handcuffed,
                 turnTimer: update.turn_timer ?? 15
               });
               

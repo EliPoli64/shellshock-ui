@@ -26,6 +26,9 @@ export interface GameStateUpdate {
     damage?: number;
     item_effect?: string;
   };
+  is_saw_active: boolean;
+  player_handcuffed: boolean;
+  dealer_handcuffed: boolean;
 }
 
 export interface MoveRequest {
@@ -76,7 +79,8 @@ export type DealerActionType =
   | { type: 'UseItem', item: ItemType, result?: string }
   | { type: 'ShootDealer', is_live: boolean, damage: number }
   | { type: 'ShootPlayer', is_live: boolean, damage: number }
-  | { type: 'Reload', live: number, blank: number };
+  | { type: 'Reload', live?: number, blank?: number, result?: string }
+  | { type: 'Info', result: string };
 
 export interface DealerTurnRequest {
   match_id: string;
