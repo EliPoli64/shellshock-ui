@@ -17,7 +17,7 @@ export const MainMenu = () => {
   }, [refreshRelayStatus]);
 
   const title = "SHELL SHOCK";
-  const subtitle = "A Game of Chance. A Dance with Death.";
+  const subtitle = "Russian Roulette with a 12-Gauge... and SOL, of course.";
   const canEnterPvp = Boolean(wallet) && relayReady;
 
   const handleStartGame = () => {
@@ -109,7 +109,7 @@ export const MainMenu = () => {
           animate={{ filter: "blur(0px)", opacity: 1 }}
           transition={{ duration: 1.5 }}
         >
-          <h1 className="font-special-elite text-[8vh] md:text-[10vh] lg:text-[12vh] text-neon-yellow neon-text mb-[1vh] tracking-tighter">
+          <h1 className="font-special-elite text-[8vh] md:text-[10vh] lg:text-[12vh] engraved-title mb-[1vh] tracking-tighter leading-none">
             {title}
           </h1>
         </motion.div>
