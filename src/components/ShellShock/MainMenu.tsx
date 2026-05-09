@@ -11,6 +11,18 @@ export const MainMenu = () => {
   
   const [showHelp, setShowHelp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
+  const [toastTimeout, setToastTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string) => {
+    // Clear any existing timeout to prevent early hide
+    if (toastTimeout) {
+      clearTimeout(toastTimeout);
+    }
+    setToast({ message, visible: true });
+    const newTimeout = setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 4000);
+    setToastTimeout(newTimeout);
+  };
 
   useEffect(() => {
     void refreshRelayStatus();
@@ -22,6 +34,10 @@ export const MainMenu = () => {
 
   const handleStartGame = () => {
     soundManager.play('uiClick');
+    if (!wallet) {
+      showToast('Connect a wallet first!');
+      return;
+    }
     if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(err => {
         console.warn(`Error attempting to enable full-screen mode: ${err.message}`);
@@ -103,6 +119,23 @@ export const MainMenu = () => {
         ))}
       </div>
       
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast.visible && (
+          <motion.div
+            initial={{ opacity: 0, x: -100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -100 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            className="absolute top-[5vh] left-[3vh] z-[200] px-[3vh] py-[2vh] bg-gray-900/95 border-[0.3vh] border-danger-red bg-gradient-to-b from-red-900/80 to-black/80 rounded-[1vh] shadow-lg shadow-red-900/30"
+          >
+            <p className="font-special-elite text-[2vh] text-danger-red text-center">
+              {toast.message}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="mb-[6vh] text-center z-10">
         <motion.div
           initial={{ filter: "blur(10px)", opacity: 0 }}
