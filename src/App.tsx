@@ -7,9 +7,19 @@ import { RoundEnd } from './components/ShellShock/RoundEnd';
 import { GameOverScreen } from './components/ShellShock/GameOverScreen';
 import { MatchSetup } from './components/ShellShock/MatchSetup';
 import { useShellShockStore } from './store/shellShockStore';
+import { soundManager } from './utils/soundEffects';
 
 function App() {
-  const { gameStatus } = useShellShockStore();
+  const gameStatus = useShellShockStore((state) => state.gameStatus);
+
+  useEffect(() => {
+    const handleKeyDown = () => {
+      soundManager.play('keyPress');
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const enterFullscreen = async () => {

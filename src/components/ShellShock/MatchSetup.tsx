@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useShellShockStore } from '../../store/shellShockStore';
+import { soundManager } from '../../utils/soundEffects';
 
 const BET_TIERS = [0.01, 0.05, 0.1, 0.5];
 
@@ -13,6 +15,8 @@ const shortenWallet = (wallet: string | null) => {
 };
 
 export const MatchSetup = () => {
+  const { connection } = useConnection();
+  const walletAdapter = useWallet();
   const {
     wallet,
     betAmount,
@@ -31,10 +35,12 @@ export const MatchSetup = () => {
     roomPhase,
     roomUpdatedAt,
     lastSignature,
+    isPendingAction,
     queueForPvp,
     cancelQueue,
     returnToMenu,
     subscribeToRoom,
+    createRoom,
   } = useShellShockStore();
 
   const [selectedBet, setSelectedBet] = useState(betAmount || BET_TIERS[0]);
@@ -154,10 +160,18 @@ export const MatchSetup = () => {
                 </p>
               )}
               {pvpRole === 'creator' && matchId && !roomPubkey && (
-                <p className="mt-3 font-special-elite text-sm text-neon-yellow">
-                  Creator matched. Next step is signing `create_room` in the Solana client and then
-                  sending `match.room_created` to the relay.
-                </p>
+                <div className="mt-4 space-y-3">
+                  <p className="font-special-elite text-sm text-neon-yellow animate-pulse">
+                    MATCH FOUND! As the creator, you must initialize the room on Solana.
+                  </p>
+                  <button
+                    onClick={() => createRoom(connection, walletAdapter)}
+                    disabled={isPendingAction}
+                    className="w-full border-2 border-neon-yellow bg-neon-yellow py-3 font-special-elite text-lg text-bg-black transition-all hover:scale-[1.02] disabled:opacity-50"
+                  >
+                    {isPendingAction ? 'INITIALIZING...' : 'CREATE SOLANA ROOM'}
+                  </button>
+                </div>
               )}
             </div>
           </div>
