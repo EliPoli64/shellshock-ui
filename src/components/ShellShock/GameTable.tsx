@@ -6,6 +6,7 @@ import { HealthMasks } from './HealthMasks';
 import { ShellRack } from './ShellRack';
 
 const ItemBubbles = ({ items, isDealer }: { items: any, isDealer: boolean }) => { 
+  const safeItems = items || {};
   const itemList = [ 
     { key: 'magnifyingGlass', icon: '🔍' }, 
     { key: 'beer', icon: '🍺' }, 
@@ -18,7 +19,7 @@ const ItemBubbles = ({ items, isDealer }: { items: any, isDealer: boolean }) => 
   return ( 
     <div className={`flex gap-[1.2vh] ${isDealer ? 'mb-[1vh]' : 'mt-[1vh]'}`}> 
       {itemList.map((item, idx) => { 
-        const count = items[item.key]; 
+        const count = safeItems[item.key]; 
         if (count <= 0) return null; 
         return ( 
           <motion.div 
