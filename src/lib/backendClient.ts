@@ -25,7 +25,7 @@ class BackendClient {
     player_handcuffed: boolean;
   }): Promise<DealerTurnResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/match/${data.match_id}/dealer-turn`, {
+      const response = await fetch(`${this.baseUrl}/match/pve/${data.match_id}/dealer-turn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -44,7 +44,7 @@ class BackendClient {
 
   async sendAction(request: MoveRequest): Promise<MoveResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/match/${request.match_id}/action`, {
+      const response = await fetch(`${this.baseUrl}/match/pve/${request.match_id}/action`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

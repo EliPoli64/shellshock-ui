@@ -793,6 +793,8 @@ export const useShellShockStore = create<ShellShockState>()(
               dealerItems: update.dealer_items,
               isPlayerTurn: update.is_player_turn,
               currentShell: update.chamber_peek || 'unknown',
+              isSawActive: update.is_saw_active ?? false,
+              gameStatus: update.game_status as GameStatus,
               isPendingAction: false,
             });
           } else {
@@ -942,16 +944,28 @@ export const useShellShockStore = create<ShellShockState>()(
                   set({ dealerActionText: `Dealer uses ${action.item}` });
                   // Update dealer items locally for UI consistency
                   const newItems = { ...get().dealerItems };
-                  (newItems as any)[action.item] -= 1;
+                  if (action.item && (newItems as any)[action.item] > 0) {
+                    (newItems as any)[action.item] -= 1;
+                  }
                   
                   if (action.item === 'saw') set({ isSawActive: true });
                   if (action.item === 'handcuffs') set({ playerHandcuffed: true });
+                  if (action.item === 'cigarettes') {
+                    // Dealer heals — update health immediately for UI feedback
+                    set({ dealerHealth: Math.min(get().dealerHealth + 1, 5) });
+                  }
+                  if (action.item === 'beer') {
+                    // Beer ejects a shell — update shell counts for UI
+                    set((state) => ({
+                      shellsRemaining: Math.max(0, state.shellsRemaining - 1),
+                    }));
+                  }
                   
                   set({ dealerItems: newItems });
                   await delay(1500);
                   set({ dealerActionText: null });
-                } else if (action.type === 'ShootDealer' || action.type === 'ShootPlayer') {
-                  const target = action.type === 'ShootDealer' ? 'dealer' : 'player';
+                } else if (action.type === 'ShootSelf' || action.type === 'ShootDealer' || action.type === 'ShootPlayer') {
+                  const target = action.type === 'ShootPlayer' ? 'player' : 'dealer';
                   const isLive = action.is_live;
                   
                   set({
@@ -970,7 +984,7 @@ export const useShellShockStore = create<ShellShockState>()(
                   }));
 
                   if (isLive) {
-                    const damage = action.damage;
+                    const damage = action.damage || 1;
                     if (target === 'player') {
                       const newHealth = Math.max(0, get().playerHealth - damage);
                       set({ playerHealth: newHealth });
@@ -1003,6 +1017,29 @@ export const useShellShockStore = create<ShellShockState>()(
                 } else if (action.type === 'Reload') {
                   get().reloadShotgun();
                   await delay(1000);
+                }
+              }
+
+              // Sync state from backend response to ensure UI matches server truth
+              const stateUpdate = response.state_update;
+              if (stateUpdate) {
+                set({
+                  playerHealth: stateUpdate.player_health ?? get().playerHealth,
+                  dealerHealth: stateUpdate.dealer_health ?? get().dealerHealth,
+                  shellsRemaining: stateUpdate.shells_remaining ?? get().shellsRemaining,
+                  liveShells: stateUpdate.live_shells ?? get().liveShells,
+                  blankShells: stateUpdate.blank_shells ?? get().blankShells,
+                  dealerItems: stateUpdate.dealer_items ?? get().dealerItems,
+                  items: stateUpdate.items ?? get().items,
+                });
+                // Handle game over from state_update
+                if (stateUpdate.game_status === 'gameover') {
+                  set({ gameStatus: 'gameover', isAnimating: false });
+                  return;
+                }
+                if (stateUpdate.game_status === 'round_end') {
+                  set({ gameStatus: 'round_end', isAnimating: false });
+                  return;
                 }
               }
 

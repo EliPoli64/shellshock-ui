@@ -91,6 +91,7 @@ export interface DealerItems {
 
 export type DealerActionType = 
   | { type: 'UseItem', item: ItemType, result?: string }
+  | { type: 'ShootSelf', is_live: boolean, damage: number }
   | { type: 'ShootDealer', is_live: boolean, damage: number }
   | { type: 'ShootPlayer', is_live: boolean, damage: number }
   | { type: 'Reload', live: number, blank: number };
@@ -98,5 +99,6 @@ export type DealerActionType =
 export interface DealerTurnResponse {
   success: boolean;
   actions: DealerActionType[];
+  state_update?: GameStateUpdate;
   error?: string;
 }
