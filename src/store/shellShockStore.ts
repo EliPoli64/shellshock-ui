@@ -51,6 +51,7 @@ interface ShellShockState {
   lastShotResult: 'live' | 'blank' | null;
   lastShotTarget: 'player' | 'dealer' | null;
 
+  logicHttpUrl: string;
   relayHttpUrl: string;
   relayWsUrl: string;
   relayReady: boolean;
@@ -179,6 +180,7 @@ export const useShellShockStore = create<ShellShockState>()(
         lastShotResult: null,
         lastShotTarget: null,
 
+        logicHttpUrl: import.meta.env.VITE_LOGIC_HTTP_URL || 'http://localhost:3010',
         relayHttpUrl: DEFAULT_RELAY_HTTP_URL,
         relayWsUrl: DEFAULT_RELAY_WS_URL,
         relayReady: false,
@@ -462,10 +464,15 @@ export const useShellShockStore = create<ShellShockState>()(
             chamber: shells,
             currentShell: 'unknown',
             isSawActive: false,
+            isRevealingShells: true,
           });
+
+          window.setTimeout(() => {
+            set({ isRevealingShells: false });
+          }, 3000);
         },
 
-        startGame: (mode, bet) => {
+        startGame: async (mode, bet) => {
           if (mode === 'pvp') {
             void get().openPvpSetup();
             set({ betAmount: bet });
@@ -473,245 +480,238 @@ export const useShellShockStore = create<ShellShockState>()(
           }
 
           set({
-            gameMode: mode,
-            transportMode: 'pve_mock',
+            gameStatus: 'setup',
             betAmount: bet,
-            gameStatus: 'playing',
-            playerHealth: 3,
-            dealerHealth: 3,
-            currentShell: 'unknown',
-            isPlayerTurn: true,
             isRevealingShells: true,
-            turnTimer: 15,
-            isSawActive: false,
-            items: {
-              magnifyingGlass: 1,
-              beer: 1,
-              handcuffs: 1,
-              cigarettes: 1,
-              saw: 1,
-              pill: 1,
-            },
-            dealerHandcuffed: false,
           });
-          get().reloadShotgun();
 
-          window.setTimeout(() => {
-            set({ isRevealingShells: false });
-          }, 3000);
-        },
+          try {
+            const res = await fetch(`${get().logicHttpUrl}/match/pve/start`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ wallet: get().wallet || 'offline', bet_lamports: bet })
+            });
 
-        shootDealer: () => {
-          const { transportMode, isPlayerTurn, chamber, dealerHealth, shellsRemaining, isSawActive, dealerHandcuffed } =
-            get();
-          if (isRelayMode(transportMode) || !isPlayerTurn || chamber.length === 0) {
-            return;
-          }
-
-          const result = chamber[0];
-          const newChamber = chamber.slice(1);
-          const newShellsRemaining = shellsRemaining - 1;
-          const isLive = result === 'live';
-          const damage = isSawActive ? 2 : 1;
-
-          set((state) => ({
-            lastShotResult: result,
-            lastShotTarget: 'dealer',
-            gameStatus: 'shot_animation',
-            isAnimating: true,
-            shellsRemaining: newShellsRemaining,
-            chamber: newChamber,
-            liveShells: isLive ? state.liveShells - 1 : state.liveShells,
-            blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
-            currentShell: 'unknown',
-          }));
-
-          window.setTimeout(() => {
-            if (isLive) {
-              const newDealerHealth = Math.max(0, dealerHealth - damage);
-              if (newDealerHealth <= 0) {
-                set((state) => ({
-                  dealerHealth: 0,
-                  gameStatus: 'round_end',
-                  roundsWon: state.roundsWon + 1,
-                  totalWon: state.totalWon + state.betAmount,
-                  isAnimating: false,
-                  isSawActive: false,
-                }));
-              } else {
-                const shouldPassTurn = !dealerHandcuffed;
-                set({
-                  dealerHealth: newDealerHealth,
-                  isPlayerTurn: !shouldPassTurn,
-                  dealerHandcuffed: false,
-                  gameStatus: 'playing',
-                  isAnimating: false,
-                  turnTimer: 15,
-                  isSawActive: false,
-                });
-                if (newShellsRemaining <= 0) {
-                  get().reloadShotgun();
-                }
-              }
-            } else {
-              const shouldPassTurn = !dealerHandcuffed;
+            if (res.ok) {
+              const data = await res.json();
+              const state = data.initial_state;
               set({
-                isPlayerTurn: !shouldPassTurn,
+                gameMode: mode,
+                transportMode: 'pve_mock',
+                matchId: data.match_id,
+                gameStatus: 'playing',
+                playerHealth: state.player_health,
+                dealerHealth: state.dealer_health,
+                shellsRemaining: state.shells_remaining,
+                liveShells: state.live_shells,
+                blankShells: state.blank_shells,
+                currentShell: 'unknown',
+                isPlayerTurn: state.is_player_turn,
+                turnTimer: 15,
+                isSawActive: false,
                 dealerHandcuffed: false,
-                gameStatus: 'playing',
-                isAnimating: false,
-                turnTimer: 15,
-                isSawActive: false,
+                items: {
+                  magnifyingGlass: state.items.magnifyingGlass || 0,
+                  beer: state.items.beer || 0,
+                  handcuffs: state.items.handcuffs || 0,
+                  cigarettes: state.items.cigarettes || 0,
+                  saw: state.items.saw || 0,
+                  pill: state.items.pill || 0,
+                }
               });
-              if (newShellsRemaining <= 0) {
-                get().reloadShotgun();
+
+              const minLive = state.live_shells;
+              const blankCount = state.blank_shells;
+              const shells: ('live' | 'blank')[] = [
+                ...Array(minLive).fill('live'),
+                ...Array(blankCount).fill('blank'),
+              ];
+              for (let i = shells.length - 1; i > 0; i -= 1) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shells[i], shells[j]] = [shells[j], shells[i]];
               }
+              set({ chamber: shells });
+
+              window.setTimeout(() => {
+                set({ isRevealingShells: false });
+              }, 3000);
             }
-          }, 1500);
+          } catch(e) {
+            console.error(e);
+            set({ gameStatus: 'menu' });
+          }
         },
 
-        shootSelf: () => {
-          const { transportMode, isPlayerTurn, chamber, playerHealth, shellsRemaining, isSawActive } = get();
-          if (isRelayMode(transportMode) || !isPlayerTurn || chamber.length === 0) {
+        shootDealer: async () => {
+          const { transportMode, isPlayerTurn, matchId, isAnimating, logicHttpUrl, wallet } = get();
+          if (isRelayMode(transportMode) || !isPlayerTurn || !matchId || isAnimating) {
             return;
           }
 
-          const result = chamber[0];
-          const newChamber = chamber.slice(1);
-          const newShellsRemaining = shellsRemaining - 1;
-          const isLive = result === 'live';
-          const damage = isSawActive ? 2 : 1;
+          set({ isAnimating: true });
 
-          set((state) => ({
-            lastShotResult: result,
-            lastShotTarget: 'player',
-            gameStatus: 'shot_animation',
-            isAnimating: true,
-            shellsRemaining: newShellsRemaining,
-            chamber: newChamber,
-            liveShells: isLive ? state.liveShells - 1 : state.liveShells,
-            blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
-            currentShell: 'unknown',
-          }));
+          try {
+            const res = await fetch(`${logicHttpUrl}/match/pve/${matchId}/action`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ match_id: matchId, player_wallet: wallet || 'offline', action: 'ShootDealer' })
+            });
 
-          window.setTimeout(() => {
-            if (isLive) {
-              const newPlayerHealth = Math.max(0, playerHealth - damage);
-              if (newPlayerHealth <= 0) {
+            if (res.ok) {
+              const data = await res.json();
+              const update = data.state_update;
+              const resultData = update.last_action_result;
+              const isLive = resultData ? resultData.is_live : false;
+              
+              set((state) => ({
+                lastShotResult: isLive ? 'live' : 'blank',
+                lastShotTarget: 'dealer',
+                gameStatus: 'shot_animation',
+                shellsRemaining: update.state.shells_remaining,
+                liveShells: update.state.live_shells,
+                blankShells: update.state.blank_shells,
+                chamber: state.chamber.slice(1),
+                currentShell: 'unknown',
+                playerHealth: update.state.player_health,
+                dealerHealth: update.state.dealer_health,
+                isSawActive: false,
+                dealerHandcuffed: false,
+              }));
+
+              window.setTimeout(() => {
                 set((state) => ({
-                  playerHealth: 0,
-                  gameStatus: 'gameover',
-                  roundsLost: state.roundsLost + 1,
-                  totalLost: state.totalLost + state.betAmount,
-                  isAnimating: false,
-                  isSawActive: false,
-                }));
-              } else {
-                set({
-                  playerHealth: newPlayerHealth,
-                  isPlayerTurn: false,
-                  gameStatus: 'playing',
+                  gameStatus: update.game_status as any,
+                  isPlayerTurn: update.state.is_player_turn,
                   isAnimating: false,
                   turnTimer: 15,
-                  isSawActive: false,
-                });
-                if (newShellsRemaining <= 0) {
+                }));
+                
+                if (update.game_status === 'round_end') {
+                  set((state) => ({ roundsWon: state.roundsWon + 1, totalWon: state.totalWon + state.betAmount }));
+                }
+
+                if (update.game_status === 'playing' && update.state.shells_remaining === 6) {
                   get().reloadShotgun();
                 }
-              }
+              }, 1500);
             } else {
-              set({
-                isPlayerTurn: true,
-                gameStatus: 'playing',
-                isAnimating: false,
-                turnTimer: 15,
-                isSawActive: false,
-              });
-              if (newShellsRemaining <= 0) {
-                get().reloadShotgun();
-              }
+              set({ isAnimating: false });
             }
-          }, 1500);
+          } catch(e) {
+            console.error(e);
+            set({ isAnimating: false });
+          }
         },
 
-        useItem: (item) => {
-          const state = get();
-          if (isRelayMode(state.transportMode)) {
+        shootSelf: async () => {
+          const { transportMode, isPlayerTurn, matchId, isAnimating, logicHttpUrl, wallet } = get();
+          if (isRelayMode(transportMode) || !isPlayerTurn || !matchId || isAnimating) {
             return;
           }
 
-          const newItems = { ...state.items };
-          if (item === 'magnifyingGlass' && newItems.magnifyingGlass > 0) {
-            newItems.magnifyingGlass -= 1;
-            set({
-              items: newItems,
-              currentShell: state.chamber[0],
-              showItemMenu: false,
-            });
-          }
-          if (item === 'beer' && newItems.beer > 0) {
-            newItems.beer -= 1;
-            const nextShell = state.chamber[0];
-            const newChamber = state.chamber.slice(1);
-            const newShellsRemaining = state.shellsRemaining - 1;
-            const isLive = nextShell === 'live';
+          set({ isAnimating: true });
 
-            set({
-              items: newItems,
-              shellsRemaining: newShellsRemaining,
-              chamber: newChamber,
-              liveShells: isLive ? state.liveShells - 1 : state.liveShells,
-              blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
-              showItemMenu: false,
-            });
-            if (newShellsRemaining <= 0) {
-              get().reloadShotgun();
-            }
-          }
-          if (item === 'handcuffs' && newItems.handcuffs > 0) {
-            newItems.handcuffs -= 1;
-            set({
-              items: newItems,
-              dealerHandcuffed: true,
-              showItemMenu: false,
-            });
-          }
-          if (item === 'cigarettes' && newItems.cigarettes > 0 && state.playerHealth < 3) {
-            newItems.cigarettes -= 1;
-            set({
-              items: newItems,
-              playerHealth: state.playerHealth + 1,
-              showItemMenu: false,
-            });
-          }
-          if (item === 'saw' && newItems.saw > 0) {
-            newItems.saw -= 1;
-            set({
-              items: newItems,
-              isSawActive: true,
-              showItemMenu: false,
-            });
-          }
-          if (item === 'pill' && newItems.pill > 0) {
-            newItems.pill -= 1;
-            const heal = Math.random() < 0.5;
-            const newPlayerHealth = heal
-              ? Math.min(state.playerHealth + 2, 3)
-              : Math.max(state.playerHealth - 1, 0);
-
-            set({
-              items: newItems,
-              playerHealth: newPlayerHealth,
-              showItemMenu: false,
+          try {
+            const res = await fetch(`${logicHttpUrl}/match/pve/${matchId}/action`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ match_id: matchId, player_wallet: wallet || 'offline', action: 'ShootSelf' })
             });
 
-            if (newPlayerHealth <= 0) {
-              set((current) => ({
-                gameStatus: 'gameover',
-                roundsLost: current.roundsLost + 1,
-                totalLost: current.totalLost + current.betAmount,
+            if (res.ok) {
+              const data = await res.json();
+              const update = data.state_update;
+              const resultData = update.last_action_result;
+              const isLive = resultData ? resultData.is_live : false;
+              
+              set((state) => ({
+                lastShotResult: isLive ? 'live' : 'blank',
+                lastShotTarget: 'player',
+                gameStatus: 'shot_animation',
+                shellsRemaining: update.state.shells_remaining,
+                liveShells: update.state.live_shells,
+                blankShells: update.state.blank_shells,
+                chamber: state.chamber.slice(1),
+                currentShell: 'unknown',
+                playerHealth: update.state.player_health,
+                dealerHealth: update.state.dealer_health,
+                isSawActive: false,
               }));
+
+              window.setTimeout(() => {
+                set((state) => ({
+                  gameStatus: update.game_status as any,
+                  isPlayerTurn: update.state.is_player_turn,
+                  isAnimating: false,
+                  turnTimer: 15,
+                }));
+                
+                if (update.game_status === 'gameover') {
+                  set((state) => ({ roundsLost: state.roundsLost + 1, totalLost: state.totalLost + state.betAmount }));
+                }
+
+                if (update.game_status === 'playing' && update.state.shells_remaining === 6) {
+                  get().reloadShotgun();
+                }
+              }, 1500);
+            } else {
+              set({ isAnimating: false });
             }
+          } catch(e) {
+            console.error(e);
+            set({ isAnimating: false });
+          }
+        },
+
+        useItem: async (item) => {
+          const { transportMode, isPlayerTurn, matchId, isAnimating, logicHttpUrl, wallet } = get();
+          if (isRelayMode(transportMode) || !isPlayerTurn || !matchId || isAnimating) {
+            return;
+          }
+
+          set({ showItemMenu: false });
+
+          try {
+            const res = await fetch(`${logicHttpUrl}/match/pve/${matchId}/action`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ match_id: matchId, player_wallet: wallet || 'offline', action: 'UseItem', item_type: item })
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              const update = data.state_update;
+
+              set((state) => ({
+                shellsRemaining: update.state.shells_remaining,
+                liveShells: update.state.live_shells,
+                blankShells: update.state.blank_shells,
+                chamber: update.state.shells_remaining < state.chamber.length ? state.chamber.slice(1) : state.chamber,
+                currentShell: update.chamber_peek === 'live' ? 'live' : update.chamber_peek === 'blank' ? 'blank' : state.currentShell,
+                playerHealth: update.state.player_health,
+                dealerHealth: update.state.dealer_health,
+                gameStatus: update.game_status as any,
+                items: {
+                  magnifyingGlass: update.state.items.magnifyingGlass || 0,
+                  beer: update.state.items.beer || 0,
+                  handcuffs: update.state.items.handcuffs || 0,
+                  cigarettes: update.state.cigarettes || 0,
+                  saw: update.state.items.saw || 0,
+                  pill: update.state.items.pill || 0,
+                },
+                dealerHandcuffed: update.state.dealer_handcuffed || false,
+                isSawActive: item === 'saw' ? true : state.isSawActive,
+              }));
+              
+              if (update.game_status === 'gameover') {
+                set((state) => ({ roundsLost: state.roundsLost + 1, totalLost: state.totalLost + state.betAmount }));
+              }
+              if (update.game_status === 'playing' && update.state.shells_remaining === 6) {
+                get().reloadShotgun();
+              }
+            }
+          } catch(e) {
+            console.error(e);
           }
         },
 
@@ -800,110 +800,73 @@ export const useShellShockStore = create<ShellShockState>()(
           });
         },
 
-        dealerTurn: () => {
-          const { transportMode, isPlayerTurn, chamber, playerHealth, dealerHealth, shellsRemaining, isSawActive } =
+        dealerTurn: async () => {
+          const { transportMode, isPlayerTurn, matchId, logicHttpUrl, isRevealingShells, isAnimating, gameStatus } =
             get();
-          if (isRelayMode(transportMode) || isPlayerTurn || chamber.length === 0) {
+          if (isRelayMode(transportMode) || isPlayerTurn || !matchId || isAnimating || isRevealingShells || gameStatus !== 'playing') {
             return;
           }
 
-          window.setTimeout(() => {
-            const shootDealerSelf = Math.random() < 0.3;
-            const result = chamber[0];
-            const newChamber = chamber.slice(1);
-            const newShellsRemaining = shellsRemaining - 1;
-            const isLive = result === 'live';
-            const damage = isSawActive ? 2 : 1;
+          set({ isAnimating: true });
 
-            set((state) => ({
-              lastShotResult: result,
-              lastShotTarget: shootDealerSelf ? 'dealer' : 'player',
-              gameStatus: 'shot_animation',
-              isAnimating: true,
-              shellsRemaining: newShellsRemaining,
-              chamber: newChamber,
-              liveShells: isLive ? state.liveShells - 1 : state.liveShells,
-              blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
-              currentShell: 'unknown',
-            }));
+          try {
+            const res = await fetch(`${logicHttpUrl}/match/pve/${matchId}/dealer-turn`, {
+              method: 'POST'
+            });
 
-            window.setTimeout(() => {
-              if (shootDealerSelf) {
-                if (isLive) {
-                  const newDealerHealth = Math.max(0, dealerHealth - damage);
-                  if (newDealerHealth <= 0) {
+            if (res.ok) {
+              const data = await res.json();
+              const actions = data.actions;
+              const update = data.state_update;
+
+              let delay = 1000;
+
+              for (const act of actions) {
+                window.setTimeout(() => {
+                  if (act.type === 'ShootSelf' || act.type === 'ShootPlayer') {
                     set((state) => ({
-                      dealerHealth: 0,
-                      gameStatus: 'round_end',
-                      roundsWon: state.roundsWon + 1,
-                      totalWon: state.totalWon + state.betAmount,
-                      isAnimating: false,
-                      isSawActive: false,
+                      lastShotResult: act.is_live ? 'live' : 'blank',
+                      lastShotTarget: act.type === 'ShootSelf' ? 'dealer' : 'player',
+                      gameStatus: 'shot_animation',
+                      chamber: state.chamber.slice(1),
                     }));
-                  } else {
-                    set({
-                      dealerHealth: newDealerHealth,
-                      isPlayerTurn: true,
-                      gameStatus: 'playing',
-                      isAnimating: false,
-                      turnTimer: 15,
-                      isSawActive: false,
-                    });
-                    if (newShellsRemaining <= 0) {
-                      get().reloadShotgun();
-                    }
                   }
-                } else {
-                  set({
-                    isPlayerTurn: false,
-                    gameStatus: 'playing',
-                    isAnimating: false,
-                    isSawActive: false,
-                  });
-                  if (newShellsRemaining <= 0) {
-                    get().reloadShotgun();
-                  }
-                }
-              } else {
-                if (isLive) {
-                  const newPlayerHealth = Math.max(0, playerHealth - damage);
-                  if (newPlayerHealth <= 0) {
-                    set((state) => ({
-                      playerHealth: 0,
-                      gameStatus: 'gameover',
-                      roundsLost: state.roundsLost + 1,
-                      totalLost: state.totalLost + state.betAmount,
-                      isAnimating: false,
-                      isSawActive: false,
-                    }));
-                  } else {
-                    set({
-                      playerHealth: newPlayerHealth,
-                      isPlayerTurn: true,
-                      gameStatus: 'playing',
-                      isAnimating: false,
-                      turnTimer: 15,
-                      isSawActive: false,
-                    });
-                    if (newShellsRemaining <= 0) {
-                      get().reloadShotgun();
-                    }
-                  }
-                } else {
-                  set({
-                    isPlayerTurn: true,
-                    gameStatus: 'playing',
-                    isAnimating: false,
-                    turnTimer: 15,
-                    isSawActive: false,
-                  });
-                  if (newShellsRemaining <= 0) {
-                    get().reloadShotgun();
-                  }
-                }
+                }, delay);
+                delay += 1500;
               }
-            }, 1500);
-          }, 1000);
+
+              window.setTimeout(() => {
+                set((state) => ({
+                  shellsRemaining: update.state.shells_remaining,
+                  liveShells: update.state.live_shells,
+                  blankShells: update.state.blank_shells,
+                  playerHealth: update.state.player_health,
+                  dealerHealth: update.state.dealer_health,
+                  gameStatus: update.game_status as any,
+                  isPlayerTurn: update.state.is_player_turn,
+                  isAnimating: false,
+                  turnTimer: 15,
+                  dealerHandcuffed: false,
+                }));
+                
+                if (update.game_status === 'round_end') {
+                  set((state) => ({ roundsWon: state.roundsWon + 1, totalWon: state.totalWon + state.betAmount }));
+                } else if (update.game_status === 'gameover') {
+                  set((state) => ({ roundsLost: state.roundsLost + 1, totalLost: state.totalLost + state.betAmount }));
+                }
+
+                if (update.game_status === 'playing' && update.state.shells_remaining === 6) {
+                  get().reloadShotgun();
+                }
+              }, delay);
+
+            } else {
+               set({ isAnimating: false });
+            }
+          } catch(e) {
+            console.error(e);
+            set({ isAnimating: false });
+          }
         },
       };
     },
