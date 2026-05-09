@@ -1,4 +1,4 @@
-export type GameAction = 'ShootDealer' | 'ShootSelf' | 'UseItem' | 'Reload';
+export type GameAction = 'ShootDealer' | 'ShootSelf' | 'UseItem' | 'Reload' | 'Timeout' | 'Fold';
 
 export type ItemType =
   | 'magnifyingGlass'
@@ -18,6 +18,7 @@ export interface GameStateUpdate {
   dealer_items: DealerItems;
   is_player_turn: boolean;
   game_status: 'playing' | 'round_end' | 'gameover';
+  turn_timer?: number;
   chamber_peek?: 'live' | 'blank';
   last_action_result?: {
     type: GameAction;
@@ -77,8 +78,13 @@ export type DealerActionType =
   | { type: 'ShootPlayer', is_live: boolean, damage: number }
   | { type: 'Reload', live: number, blank: number };
 
+export interface DealerTurnRequest {
+  match_id: string;
+}
+
 export interface DealerTurnResponse {
   success: boolean;
   actions: DealerActionType[];
   error?: string;
+  state_update?: GameStateUpdate;
 }

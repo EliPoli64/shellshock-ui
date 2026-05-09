@@ -129,7 +129,6 @@ interface ShellShockState {
   setShowItemMenu: (show: boolean) => void;
   resetTurn: () => void;
   dealerTurn: () => Promise<void>;
-  reloadShotgun: () => void;
   decrementTimer: () => void;
   resetPeek: () => void;
   createRoom: (connection: any, wallet: any) => Promise<void>;
@@ -197,20 +196,20 @@ export const useShellShockStore = create<ShellShockState>()(
         isSawActive: false,
 
         items: {
-          magnifyingGlass: 1,
-          beer: 1,
-          handcuffs: 1,
-          cigarettes: 1,
-          saw: 0,
-          pill: 1,
+          magnifyingGlass: 2,
+          beer: 2,
+          handcuffs: 2,
+          cigarettes: 2,
+          saw: 2,
+          pill: 2,
         },
         dealerItems: {
-          magnifyingGlass: 1,
-          beer: 1,
-          handcuffs: 1,
-          cigarettes: 1,
-          saw: 1,
-          pill: 1,
+          magnifyingGlass: 2,
+          beer: 2,
+          handcuffs: 2,
+          cigarettes: 2,
+          saw: 2,
+          pill: 2,
         },
         dealerHandcuffed: false,
         playerHandcuffed: false,
@@ -419,12 +418,12 @@ export const useShellShockStore = create<ShellShockState>()(
                 wallet: p.wallet,
                 health: p.health,
                 items: p.items || {
-                  magnifyingGlass: 0,
-                  beer: 0,
-                  handcuffs: 0,
-                  cigarettes: 0,
-                  saw: 0,
-                  pill: 0,
+                  magnifyingGlass: 2,
+                  beer: 2,
+                  handcuffs: 2,
+                  cigarettes: 2,
+                  saw: 2,
+                  pill: 2,
                 },
                 handcuffed: p.handcuffed || false,
               }));
@@ -550,10 +549,6 @@ export const useShellShockStore = create<ShellShockState>()(
           });
         },
 
-        reloadShotgun: () => {
-          // Now handled by backend
-        },
-
         startGame: async (mode, bet) => {
           const { wallet } = get();
           
@@ -584,7 +579,6 @@ export const useShellShockStore = create<ShellShockState>()(
               transportMode: 'pve_mock',
               matchId: res.match_id,
               betAmount: bet,
-              gameStatus: 'playing',
               playerHealth: state.player_health,
               dealerHealth: state.dealer_health,
               shellsRemaining: state.shells_remaining,
@@ -593,8 +587,10 @@ export const useShellShockStore = create<ShellShockState>()(
               items: state.items,
               dealerItems: state.dealer_items,
               isPlayerTurn: state.is_player_turn,
+              gameStatus: (state as any).game_status as GameStatus || 'playing',
               isRevealingShells: true,
               isPendingAction: false,
+              turnTimer: (state as any).turn_timer ?? 15,
             });
 
             window.setTimeout(() => {
@@ -636,6 +632,9 @@ export const useShellShockStore = create<ShellShockState>()(
             soundManager.play(result?.is_live ? 'shotLive' : 'shotBlank');
 
             window.setTimeout(() => {
+              const wasReloaded = update.last_action_result?.item_effect === "Shotgun reloaded!";
+              const isGameOver = update.game_status === 'gameover';
+              
               set({
                 playerHealth: update.player_health,
                 dealerHealth: update.dealer_health,
@@ -648,8 +647,35 @@ export const useShellShockStore = create<ShellShockState>()(
                 gameStatus: update.game_status as GameStatus,
                 isAnimating: false,
                 isSawActive: false,
-                turnTimer: 15,
+                turnTimer: update.turn_timer ?? 15,
+                isRevealingShells: wasReloaded ? true : get().isRevealingShells,
+                dealerActionText: wasReloaded ? "SHOTGUN RELOADED" : get().dealerActionText
               });
+
+              if (isGameOver) {
+                const won = update.player_health > 0;
+                soundManager.play(won ? 'win' : 'loss');
+                if (won) {
+                  set(state => ({ 
+                    roundsWon: state.roundsWon + 1,
+                    totalWon: state.totalWon + state.betAmount 
+                  }));
+                } else {
+                  set(state => ({ 
+                    roundsLost: state.roundsLost + 1,
+                    totalLost: state.totalLost + state.betAmount 
+                  }));
+                }
+              }
+
+              if (wasReloaded) {
+                window.setTimeout(() => {
+                  set({ 
+                    isRevealingShells: false,
+                    dealerActionText: null
+                  });
+                }, 3000);
+              }
             }, 1500);
           } else {
             set({ 
@@ -686,6 +712,9 @@ export const useShellShockStore = create<ShellShockState>()(
             soundManager.play(result?.is_live ? 'shotLive' : 'shotBlank');
 
             window.setTimeout(() => {
+              const wasReloaded = update.last_action_result?.item_effect === "Shotgun reloaded!";
+              const isGameOver = update.game_status === 'gameover';
+
               set({
                 playerHealth: update.player_health,
                 dealerHealth: update.dealer_health,
@@ -698,8 +727,35 @@ export const useShellShockStore = create<ShellShockState>()(
                 gameStatus: update.game_status as GameStatus,
                 isAnimating: false,
                 isSawActive: false,
-                turnTimer: 15,
+                turnTimer: update.turn_timer ?? 15,
+                isRevealingShells: wasReloaded ? true : get().isRevealingShells,
+                dealerActionText: wasReloaded ? "SHOTGUN RELOADED" : get().dealerActionText
               });
+
+              if (isGameOver) {
+                const won = update.player_health > 0;
+                soundManager.play(won ? 'win' : 'loss');
+                if (won) {
+                  set(state => ({ 
+                    roundsWon: state.roundsWon + 1,
+                    totalWon: state.totalWon + state.betAmount 
+                  }));
+                } else {
+                  set(state => ({ 
+                    roundsLost: state.roundsLost + 1,
+                    totalLost: state.totalLost + state.betAmount 
+                  }));
+                }
+              }
+
+              if (wasReloaded) {
+                window.setTimeout(() => {
+                  set({ 
+                    isRevealingShells: false,
+                    dealerActionText: null
+                  });
+                }, 3000);
+              }
             }, 1500);
           } else {
             set({ 
@@ -726,6 +782,12 @@ export const useShellShockStore = create<ShellShockState>()(
             const update = res.state_update;
             soundManager.play('itemUse');
 
+            const itemEffect = update.last_action_result?.item_effect;
+            if (item === 'magnifyingGlass' && itemEffect) {
+              set({ dealerActionText: `PEEK RESULT: ${itemEffect.toUpperCase()}` });
+              window.setTimeout(() => set({ dealerActionText: null }), 3000);
+            }
+
             set({
               playerHealth: update.player_health,
               dealerHealth: update.dealer_health,
@@ -737,6 +799,7 @@ export const useShellShockStore = create<ShellShockState>()(
               isPlayerTurn: update.is_player_turn,
               currentShell: update.chamber_peek || 'unknown',
               isSawActive: update.last_action_result?.item_effect === 'saw_active',
+              turnTimer: update.turn_timer ?? 15,
               isPendingAction: false,
             });
           } else {
@@ -747,16 +810,37 @@ export const useShellShockStore = create<ShellShockState>()(
           }
         },
 
-        fold: () => {
-          if (isRelayMode(get().transportMode)) {
+        fold: async () => {
+          const { transportMode, matchId, wallet, isPendingAction, isPlayerTurn, gameStatus, isAnimating } = get();
+          
+          if (isRelayMode(transportMode)) {
             return;
           }
 
-          set((state) => ({
-            gameStatus: 'round_end',
-            roundsLost: state.roundsLost + 1,
-            totalLost: state.totalLost + state.betAmount,
-          }));
+          if (!matchId || !wallet || isPendingAction || !isPlayerTurn || gameStatus !== 'playing' || isAnimating) return;
+
+          set({ isPendingAction: true });
+          const res = await backendClient.sendAction({
+             match_id: matchId,
+             player_wallet: wallet,
+             action: 'Fold',
+           });
+
+          if (res.success && res.state_update) {
+            const update = res.state_update;
+            set({
+              playerHealth: update.player_health,
+              dealerHealth: update.dealer_health,
+              gameStatus: update.game_status as GameStatus,
+              isPendingAction: false,
+              roundsLost: get().roundsLost + 1,
+              totalLost: get().totalLost + get().betAmount,
+              dealerActionText: "PLAYER FOLDED"
+            });
+            window.setTimeout(() => set({ dealerActionText: null }), 2000);
+          } else {
+            set({ isPendingAction: false });
+          }
         },
 
         playAgain: () => {
@@ -791,8 +875,8 @@ export const useShellShockStore = create<ShellShockState>()(
 
         setShowItemMenu: (show) => set({ showItemMenu: show }),
 
-        decrementTimer: () => {
-          const { transportMode, turnTimer, isPlayerTurn, gameStatus, isAnimating, isRevealingShells, playerHealth, roundsLost, totalLost, betAmount, roomUpdatedAt, relayTurnTimeoutSeconds } =
+        decrementTimer: async () => {
+          const { transportMode, turnTimer, isPlayerTurn, gameStatus, isAnimating, isRevealingShells, roomUpdatedAt, relayTurnTimeoutSeconds, matchId, wallet } =
             get();
           
           if (isRelayMode(transportMode)) {
@@ -820,21 +904,35 @@ export const useShellShockStore = create<ShellShockState>()(
 
           const newTimer = Math.max(0, turnTimer - 1);
           set({ turnTimer: newTimer });
-          if (newTimer === 0) {
-            const newPlayerHealth = playerHealth - 1;
-            if (newPlayerHealth <= 0) {
+
+          if (newTimer === 0 && matchId && wallet) {
+            set({ isPendingAction: true });
+            const res = await backendClient.sendAction({
+               match_id: matchId,
+               player_wallet: wallet,
+               action: 'Timeout',
+             });
+
+            if (res.success && res.state_update) {
+              const update = res.state_update;
               set({
-                playerHealth: 0,
-                gameStatus: 'gameover',
-                roundsLost: roundsLost + 1,
-                totalLost: totalLost + betAmount,
-              });
-            } else {
-              set({
-                playerHealth: newPlayerHealth,
-                isPlayerTurn: false,
+                playerHealth: update.player_health,
+                dealerHealth: update.dealer_health,
+                shellsRemaining: update.shells_remaining,
+                liveShells: update.live_shells,
+                blankShells: update.blank_shells,
+                items: update.items,
+                dealerItems: update.dealer_items,
+                isPlayerTurn: update.is_player_turn,
+                gameStatus: update.game_status as GameStatus,
+                isPendingAction: false,
                 turnTimer: 15,
+                dealerActionText: update.last_action_result?.item_effect || "TIMEOUT!"
               });
+              
+              window.setTimeout(() => set({ dealerActionText: null }), 2000);
+            } else {
+              set({ isPendingAction: false });
             }
           }
         },
@@ -848,360 +946,112 @@ export const useShellShockStore = create<ShellShockState>()(
         },
 
         dealerTurn: async () => {
-          const { 
-            transportMode, 
-            isPlayerTurn, 
-            chamber, 
-            dealerItems, 
-            playerHandcuffed, 
-            isSawActive, 
-            playerHealth, 
-            dealerHealth, 
-            shellsRemaining, 
-            liveShells, 
-            blankShells, 
-            matchId 
-          } = get();
+          const { matchId } = get();
 
-          // If matchId exists, we attempt to use the backend for the dealer's logic
-          if (matchId) {
-            set({ isAnimating: true });
-            const response = await backendClient.getDealerTurn({
-              match_id: matchId,
-              player_health: playerHealth,
-              dealer_health: dealerHealth,
-              shells_remaining: shellsRemaining,
-              live_shells: liveShells,
-              blank_shells: blankShells,
-              items: dealerItems,
-              player_handcuffed: playerHandcuffed
-            });
-
-            if (response.success) {
-              const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-              
-              for (const action of response.actions) {
-                if (action.type === 'UseItem') {
-                  soundManager.play('itemUse');
-                  set({ dealerActionText: `Dealer uses ${action.item}` });
-                  // Update dealer items locally for UI consistency
-                  const newItems = { ...get().dealerItems };
-                  (newItems as any)[action.item] -= 1;
-                  
-                  if (action.item === 'saw') set({ isSawActive: true });
-                  if (action.item === 'handcuffs') set({ playerHandcuffed: true });
-                  
-                  set({ dealerItems: newItems });
-                  await delay(1500);
-                  set({ dealerActionText: null });
-                } else if (action.type === 'ShootDealer' || action.type === 'ShootPlayer') {
-                  const target = action.type === 'ShootDealer' ? 'dealer' : 'player';
-                  const isLive = action.is_live;
-                  
-                  set({
-                    lastShotResult: isLive ? 'live' : 'blank',
-                    lastShotTarget: target,
-                    gameStatus: 'shot_animation',
-                    isAnimating: true,
-                  });
-
-                  soundManager.play(isLive ? 'shotLive' : 'shotBlank');
-                  await delay(1500);
-
-                  if (isLive) {
-                    const damage = action.damage;
-                    if (target === 'player') {
-                      const newHealth = Math.max(0, get().playerHealth - damage);
-                      set({ playerHealth: newHealth });
-                      if (newHealth <= 0) {
-                        set({ gameStatus: 'gameover', isAnimating: false });
-                        return;
-                      }
-                    } else {
-                      const newHealth = Math.max(0, get().dealerHealth - damage);
-                      set({ dealerHealth: newHealth });
-                      if (newHealth <= 0) {
-                        set({ gameStatus: 'round_end', isAnimating: false });
-                        return;
-                      }
-                    }
-                  }
-
-                  // Common shot cleanup
-                  set((state) => ({
-                    shellsRemaining: state.shellsRemaining - 1,
-                    liveShells: isLive ? state.liveShells - 1 : state.liveShells,
-                    blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
-                    isSawActive: false,
-                    gameStatus: 'playing',
-                  }));
-
-                  if (get().shellsRemaining <= 0) get().reloadShotgun();
-                } else if (action.type === 'Reload') {
-                  get().reloadShotgun();
-                  await delay(1000);
-                }
-              }
-
-              // End of turn logic
-              const shouldPassTurn = !get().playerHandcuffed;
-              set({ 
-                isPlayerTurn: shouldPassTurn, 
-                playerHandcuffed: false,
-                isAnimating: false,
-                turnTimer: 15
-              });
-              if (shouldPassTurn) soundManager.play('turnStart');
-              return;
-            } else {
-              console.error('Dealer backend error:', response.error);
-              set({ isAnimating: false });
-              // Fallback to local logic if backend fails
-            }
-          }
-
-          // --- LOCAL FALLBACK LOGIC (Original) ---
-          if (isRelayMode(transportMode) || isPlayerTurn || chamber.length === 0 || get().gameStatus !== 'playing') {
-            return;
-          }
+          if (!matchId) return;
 
           set({ isAnimating: true });
+          const response = await backendClient.getDealerTurn({
+            match_id: matchId
+          });
 
-          const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-          await delay(1000);
-
-          const currentDealerItems = { ...dealerItems };
-          let knownShell: 'live' | 'blank' | 'unknown' = 'unknown';
-          let sawUsed = isSawActive;
-
-          const useItems = async () => {
-            let itemsUsedThisTurn = 0;
-            const maxItemsPerTurn = 2;
-
-            let actionTaken = true;
-            while (actionTaken && itemsUsedThisTurn < maxItemsPerTurn) {
-              actionTaken = false;
-              if (itemsUsedThisTurn > 0 && Math.random() < 0.4) break;
-
-              if (currentDealerItems.cigarettes > 0 && get().dealerHealth < 3) {
-                currentDealerItems.cigarettes -= 1;
-                itemsUsedThisTurn += 1;
+          if (response.success) {
+            const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+            
+            for (const action of response.actions) {
+              if (action.type === 'UseItem') {
                 soundManager.play('itemUse');
-                set({
-                  dealerItems: { ...currentDealerItems },
-                  dealerHealth: Math.min(get().dealerHealth + 1, 3),
-                  dealerActionText: 'Dealer uses Cigarettes',
-                });
-                await delay(1500);
-                set({ dealerActionText: null });
-                actionTaken = true;
-                continue;
-              }
-
-              if (currentDealerItems.magnifyingGlass > 0 && knownShell === 'unknown') {
-                currentDealerItems.magnifyingGlass -= 1;
-                itemsUsedThisTurn += 1;
-                soundManager.play('itemUse');
-                knownShell = get().chamber[0];
-                set({
-                  dealerItems: { ...currentDealerItems },
-                  dealerActionText: 'Dealer uses Magnifying Glass',
-                });
-                await delay(1500);
-                set({ dealerActionText: null });
-                actionTaken = true;
-                continue;
-              }
-
-              if (currentDealerItems.beer > 0 && knownShell === 'blank') {
-                currentDealerItems.beer -= 1;
-                itemsUsedThisTurn += 1;
-                soundManager.play('itemUse');
-                const ejectedShell = get().chamber[0];
-                const isLive = ejectedShell === 'live';
-                set((state) => ({
-                  dealerItems: { ...currentDealerItems },
-                  chamber: state.chamber.slice(1),
-                  shellsRemaining: state.shellsRemaining - 1,
-                  liveShells: isLive ? state.liveShells - 1 : state.liveShells,
-                  blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
-                  dealerActionText: 'Dealer uses Beer (Ejected a shell)',
-                }));
-                knownShell = 'unknown';
-                await delay(1500);
-                set({ dealerActionText: null });
-                if (get().shellsRemaining <= 0) get().reloadShotgun();
-                actionTaken = true;
-                continue;
-              }
-
-              if (currentDealerItems.saw > 0 && knownShell === 'live' && !sawUsed) {
-                currentDealerItems.saw -= 1;
-                itemsUsedThisTurn += 1;
-                soundManager.play('itemUse');
-                sawUsed = true;
-                set({
-                  dealerItems: { ...currentDealerItems },
-                  isSawActive: true,
-                  dealerActionText: 'Dealer uses Saw',
-                });
-                await delay(1500);
-                set({ dealerActionText: null });
-                actionTaken = true;
-                continue;
-              }
-
-              if (currentDealerItems.handcuffs > 0 && !get().playerHandcuffed) {
-                currentDealerItems.handcuffs -= 1;
-                itemsUsedThisTurn += 1;
-                soundManager.play('itemUse');
-                set({
-                  dealerItems: { ...currentDealerItems },
-                  playerHandcuffed: true,
-                  dealerActionText: 'Dealer uses Handcuffs',
-                });
-                await delay(1500);
-                set({ dealerActionText: null });
-                actionTaken = true;
-                continue;
-              }
-
-              if (currentDealerItems.pill > 0 && get().dealerHealth <= 1) {
-                currentDealerItems.pill -= 1;
-                itemsUsedThisTurn += 1;
-                soundManager.play('itemUse');
-                const heal = Math.random() < 0.5;
-                const newHealth = heal ? Math.min(get().dealerHealth + 2, 3) : Math.max(get().dealerHealth - 1, 0);
-
-                set({
-                  dealerItems: { ...currentDealerItems },
-                  dealerHealth: newHealth,
-                  dealerActionText: heal ? 'Dealer uses Pill (Healed!)' : 'Dealer uses Pill (Damaged!)',
-                });
-                await delay(1500);
-                set({ dealerActionText: null });
-
-                if (newHealth <= 0) {
-                  set((state) => ({
-                    gameStatus: 'round_end',
-                    roundsWon: state.roundsWon + 1,
-                    totalWon: state.totalWon + state.betAmount,
-                    isAnimating: false,
-                  }));
-                  return false;
+                
+                const displayMessage = action.result 
+                  ? `Dealer uses ${action.item}: ${action.result}`
+                  : `Dealer uses ${action.item}`;
+                
+                set({ dealerActionText: displayMessage });
+                
+                // Instant UI update for better feel
+                if (action.item === 'cigarettes') {
+                  set(state => ({ dealerHealth: Math.min(state.dealerHealth + 1, 3) }));
+                } else if (action.item === 'pill' && action.result) {
+                  if (action.result.includes('Healed 2 HP')) {
+                    set(state => ({ dealerHealth: Math.min(state.dealerHealth + 2, 3) }));
+                  } else if (action.result.includes('Lost 1 HP')) {
+                    set(state => ({ dealerHealth: Math.max(state.dealerHealth - 1, 1) }));
+                  }
                 }
-                actionTaken = true;
-                continue;
-              }
-            }
-            return true;
-          };
-
-          const continueTurn = await useItems();
-          if (!continueTurn) return;
-
-          const chamberArray = get().chamber;
-          const nextShell = chamberArray[0];
-          const isLive = nextShell === 'live';
-          const damage = get().isSawActive ? 2 : 1;
-
-          let shootSelf = false;
-          if (knownShell === 'live' as any) {
-            shootSelf = false;
-          } else if (knownShell === 'blank' as any) {
-            shootSelf = true;
-          } else {
-            const liveProb = get().liveShells / get().shellsRemaining;
-            shootSelf = liveProb < 0.25;
-          }
-
-          set((state) => ({
-            lastShotResult: nextShell,
-            lastShotTarget: shootSelf ? 'dealer' : 'player',
-            gameStatus: 'shot_animation',
-            shellsRemaining: state.shellsRemaining - 1,
-            chamber: state.chamber.slice(1),
-            liveShells: isLive ? state.liveShells - 1 : state.liveShells,
-            blankShells: !isLive ? state.blankShells - 1 : state.blankShells,
-            currentShell: 'unknown',
-          }));
-
-          soundManager.play(isLive ? 'shotLive' : 'shotBlank');
-
-          await delay(1500);
-
-          if (shootSelf) {
-            if (isLive) {
-              const newDealerHealth = Math.max(0, get().dealerHealth - damage);
-              if (newDealerHealth <= 0) {
-                set((state) => ({
-                  dealerHealth: 0,
-                  gameStatus: 'round_end',
-                  roundsWon: state.roundsWon + 1,
-                  totalWon: state.totalWon + state.betAmount,
-                  isAnimating: false,
-                  isSawActive: false,
-                }));
-              } else {
-                const shouldPassTurn = !playerHandcuffed;
-                if (shouldPassTurn) soundManager.play('turnStart');
+                
+                await delay(2000);
+                set({ dealerActionText: null });
+              } else if (action.type === 'ShootDealer' || action.type === 'ShootPlayer') {
+                const target = action.type === 'ShootDealer' ? 'dealer' : 'player';
+                const isLive = action.is_live;
+                
                 set({
-                  dealerHealth: newDealerHealth,
-                  isPlayerTurn: shouldPassTurn,
-                  playerHandcuffed: false,
-                  gameStatus: 'playing',
-                  isAnimating: false,
-                  turnTimer: 15,
-                  isSawActive: false,
+                  lastShotResult: isLive ? 'live' : 'blank',
+                  lastShotTarget: target,
+                  gameStatus: 'shot_animation',
+                  isAnimating: true,
                 });
-                if (get().shellsRemaining <= 0) get().reloadShotgun();
+
+                soundManager.play(isLive ? 'shotLive' : 'shotBlank');
+                await delay(1500);
+
+                // Basic health update for animation
+                if (isLive) {
+                  const damage = action.damage || 1;
+                  if (target === 'player') {
+                    set(state => ({ playerHealth: Math.max(0, state.playerHealth - damage) }));
+                  } else {
+                    set(state => ({ dealerHealth: Math.max(0, state.dealerHealth - damage) }));
+                  }
+                }
+                
+                set({ gameStatus: 'playing' });
+              } else if (action.type === 'Reload') {
+                set({ 
+                  isRevealingShells: true,
+                });
+                
+                window.setTimeout(() => {
+                  set({ 
+                    isRevealingShells: false,
+                    dealerActionText: null
+                  });
+                }, 3000);
+                await delay(3000);
+              }
+            }
+
+            // FINAL SYNC - Trust the backend state update completely
+            if (response.state_update) {
+              const update = response.state_update;
+              set({
+                playerHealth: update.player_health,
+                dealerHealth: update.dealer_health,
+                shellsRemaining: update.shells_remaining,
+                liveShells: update.live_shells,
+                blankShells: update.blank_shells,
+                items: update.items,
+                dealerItems: update.dealer_items,
+                isPlayerTurn: update.is_player_turn,
+                gameStatus: update.game_status as GameStatus,
+                isAnimating: false,
+                isSawActive: false,
+                turnTimer: update.turn_timer ?? 15
+              });
+              
+              if (update.game_status === 'gameover') {
+                const won = update.player_health > 0;
+                soundManager.play(won ? 'win' : 'loss');
+              } else if (update.is_player_turn) {
+                soundManager.play('turnStart');
               }
             } else {
-              set({
-                isPlayerTurn: false,
-                gameStatus: 'playing',
-                isAnimating: false,
-                isSawActive: false,
-              });
-              if (get().shellsRemaining <= 0) get().reloadShotgun();
+              set({ isAnimating: false });
             }
-          } else if (isLive) {
-            const newPlayerHealth = Math.max(0, get().playerHealth - damage);
-            if (newPlayerHealth <= 0) {
-              set((state) => ({
-                playerHealth: 0,
-                gameStatus: 'gameover',
-                roundsLost: state.roundsLost + 1,
-                totalLost: state.totalLost + state.betAmount,
-                isAnimating: false,
-                isSawActive: false,
-              }));
-            } else {
-              const shouldPassTurn = !playerHandcuffed;
-              if (shouldPassTurn) soundManager.play('turnStart');
-              set({
-                playerHealth: newPlayerHealth,
-                isPlayerTurn: shouldPassTurn,
-                playerHandcuffed: false,
-                gameStatus: 'playing',
-                isAnimating: false,
-                turnTimer: 15,
-                isSawActive: false,
-              });
-              if (get().shellsRemaining <= 0) get().reloadShotgun();
-            }
+            return;
           } else {
-            const shouldPassTurn = !playerHandcuffed;
-            if (shouldPassTurn) soundManager.play('turnStart');
-            set({
-              isPlayerTurn: shouldPassTurn,
-              playerHandcuffed: false,
-              gameStatus: 'playing',
-              isAnimating: false,
-              turnTimer: 15,
-              isSawActive: false,
-            });
-            if (get().shellsRemaining <= 0) get().reloadShotgun();
+            console.error('Dealer backend error:', response.error);
+            set({ isAnimating: false });
           }
         },
         resetPeek: () => set({ currentShell: 'unknown' }),

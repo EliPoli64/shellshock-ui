@@ -16,13 +16,6 @@ class BackendClient {
 
   async getDealerTurn(data: {
     match_id: string;
-    player_health: number;
-    dealer_health: number;
-    shells_remaining: number;
-    live_shells: number;
-    blank_shells: number;
-    items: DealerItems;
-    player_handcuffed: boolean;
   }): Promise<DealerTurnResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/match/${data.match_id}/dealer-turn`, {

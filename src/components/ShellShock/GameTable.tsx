@@ -70,7 +70,9 @@ export const GameTable: React.FC = () => {
     gameMode,
     players,
     wallet,
-    turnWallet
+    turnWallet,
+    showItemMenu,
+    leaveTable
   } = useShellShockStore();
 
   const isPvP = gameMode === 'pvp';
@@ -98,6 +100,15 @@ export const GameTable: React.FC = () => {
   return ( 
     <div className="absolute inset-0 flex flex-col bg-bg-black overflow-hidden"> 
       <div className="crt-overlay" /> 
+
+      {/* Exit Button */}
+      <button 
+        onClick={leaveTable}
+        className="absolute top-[2vh] left-[2vh] z-[100] font-special-elite text-text-cream/50 hover:text-danger-red transition-colors flex items-center gap-[1vh] group"
+      >
+        <span className="text-[2.5vh] group-hover:scale-110 transition-transform">←</span>
+        <span className="text-[2vh] tracking-widest border-b border-transparent group-hover:border-danger-red">MENU</span>
+      </button>
       
       <div className="flex-1 flex flex-col items-center justify-center p-[2vh] relative"> 
         {/* Opponents Area */}
@@ -196,7 +207,7 @@ export const GameTable: React.FC = () => {
           )} 
  
           {/* Dealer/Opponent Action Overlay */} 
-          {(dealerActionText || (isPvP && !myTurn && gameStatus === 'playing') || (gameMode === 'pve' && !isPlayerTurn && isAnimating)) && ( 
+          {(dealerActionText || (isPvP && !myTurn && gameStatus === 'playing') || (gameMode === 'pve' && !isPlayerTurn && isAnimating && gameStatus === 'playing')) && ( 
             <motion.div 
               initial={{ opacity: 0, backgroundColor: 'rgba(0,0,0,0)' }} 
               animate={{ opacity: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} 
@@ -296,12 +307,12 @@ export const GameTable: React.FC = () => {
                   transition={{ delay: 0.3 }}
                   className="font-special-elite text-[3vh] text-text-cream uppercase tracking-[0.4em] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/40 px-[2vh] py-[0.5vh] rounded-full backdrop-blur-sm"
                 >
-                  {lastShotTarget === wallet ? 'Target: You' : 'Target: Opponent'}
+                  {lastShotTarget === "player" ? 'Target: You' : 'Target: Opponent'}
                 </motion.div>
               </motion.div>
             )} 
              
-            {gameStatus === 'playing' && !isAnimating && !isRevealingShells && !dealerActionText && ( 
+            {gameStatus === 'playing' && !isAnimating && !isRevealingShells && !dealerActionText && !showItemMenu && ( 
               <div className="flex flex-col items-center gap-[1vh]"> 
                 <div className="font-special-elite text-[4vh] text-neon-yellow neon-text"> 
                   {myTurn ? 'YOUR TURN' : "WAITING..."} 
