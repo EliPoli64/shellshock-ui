@@ -677,12 +677,10 @@ export const useShellShockStore = create<ShellShockState>()(
                 window.setTimeout(() => {
                   set({ 
                     isRevealingShells: true,
-                    dealerActionText: "SHOTGUN RELOADED"
                   });
                   window.setTimeout(() => {
                     set({ 
                       isRevealingShells: false,
-                      dealerActionText: null
                     });
                   }, 3000);
                 }, 1000);
@@ -769,12 +767,10 @@ export const useShellShockStore = create<ShellShockState>()(
                 window.setTimeout(() => {
                   set({ 
                     isRevealingShells: true,
-                    dealerActionText: "SHOTGUN RELOADED"
                   });
                   window.setTimeout(() => {
                     set({ 
                       isRevealingShells: false,
-                      dealerActionText: null
                     });
                   }, 3000);
                 }, 1000);
@@ -828,13 +824,20 @@ export const useShellShockStore = create<ShellShockState>()(
               dealerHandcuffed: update.dealer_handcuffed,
               turnTimer: update.turn_timer ?? 15,
               isPendingAction: false,
-              isRevealingShells: wasReloaded ? true : get().isRevealingShells
+              // Removed isRevealingShells from here to delay it
             });
 
             if (wasReloaded) {
               window.setTimeout(() => {
-                set({ isRevealingShells: false });
-              }, 3000);
+                set({ 
+                  isRevealingShells: true,
+                });
+                window.setTimeout(() => {
+                  set({ 
+                    isRevealingShells: false,
+                  });
+                }, 3000);
+              }, 1000);
             }
           } else {
             set({ 
@@ -1051,13 +1054,11 @@ export const useShellShockStore = create<ShellShockState>()(
               } else if (action.type === 'Reload') {
                 set({ 
                   isRevealingShells: true,
-                  dealerActionText: "SHOTGUN RELOADED"
                 });
                 
                 window.setTimeout(() => {
                   set({ 
                     isRevealingShells: false,
-                    dealerActionText: null
                   });
                 }, 3000);
                 await delay(3000);

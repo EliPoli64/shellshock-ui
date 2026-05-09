@@ -207,7 +207,7 @@ export const GameTable: React.FC = () => {
           )} 
  
           {/* Dealer/Opponent Action Overlay */} 
-          {(dealerActionText || (isPvP && !myTurn && gameStatus === 'playing') || (gameMode === 'pve' && !isPlayerTurn && isAnimating && gameStatus === 'playing')) && ( 
+          {(dealerActionText || (isPvP && !myTurn && gameStatus === 'playing') || (gameMode === 'pve' && !isPlayerTurn && isAnimating && gameStatus === 'playing')) && !isRevealingShells && ( 
             <motion.div 
               initial={{ opacity: 0, backgroundColor: 'rgba(0,0,0,0)' }} 
               animate={{ opacity: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} 
