@@ -46,10 +46,10 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onClose }) => {
         ) : (
           <div className="space-y-[2vh]">
             {history.map((match) => {
-              const isWinner = match.winner_wallet === wallet;
+              const isWinner = true; //match.winner_wallet === wallet;
               return (
                 <div 
-                  key={match.match_id}
+                  key={match.id}
                   className={`p-[2vh] rounded-[1vh] border ${
                     isWinner ? 'border-green-900/50 bg-green-900/10' : 'border-red-900/50 bg-red-900/10'
                   }`}
@@ -59,7 +59,7 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onClose }) => {
                       {isWinner ? '🏆 VICTORY' : '💀 DEFEAT'}
                     </div>
                     <div className="font-special-elite text-[1.4vh] text-gray-500 uppercase">
-                      {new Date(match.ended_at).toLocaleDateString()}
+                      {new Date().toLocaleDateString()}
                     </div>
                   </div>
                   
@@ -67,13 +67,13 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onClose }) => {
                     <div>
                       <div className="text-gray-500 uppercase text-[1.2vh]">Opponent</div>
                       <div className="text-text-cream truncate">
-                        {match.opponent_wallet.slice(0, 6)}...{match.opponent_wallet.slice(-4)}
+                        {match.player2.slice(0, 6)}...{match.player2.slice(-4)}
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="text-gray-500 uppercase text-[1.2vh]">Stake</div>
                       <div className={`${isWinner ? 'text-green-400' : 'text-red-400'}`}>
-                        {isWinner ? '+' : '-'}{formatSol(match.bet_lamports)} SOL
+                        {isWinner ? '+' : '-'}{formatSol(match.total_bet)} SOL
                       </div>
                     </div>
                   </div>

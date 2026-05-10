@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useShellShockStore } from '../../store/shellShockStore';
-import { soundManager } from '../../utils/soundEffects';
 
 const BET_TIERS = [0.01, 0.05, 0.1, 0.5];
 

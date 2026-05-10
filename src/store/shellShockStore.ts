@@ -326,6 +326,7 @@ export const useShellShockStore = create<ShellShockState>()(
         const { chamber } = get();
         if (chamber.length === 0) throw new Error('Empty chamber');
         const [shell, ...rest] = chamber;
+        console.log(target);
         return { shell, newChamber: rest };
       };
 

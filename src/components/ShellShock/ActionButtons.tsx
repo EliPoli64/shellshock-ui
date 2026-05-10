@@ -32,6 +32,7 @@ export const ActionButtons: React.FC = () => {
   };
 
   const handleShootDealer = (targetWallet?: string) => {
+    console.log(targetWallet);
     if (isPendingAction) return;
     soundManager.play('uiClick');
     shootDealer();
