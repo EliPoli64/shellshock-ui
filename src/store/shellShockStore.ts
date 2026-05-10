@@ -775,16 +775,15 @@ export const useShellShockStore = create<ShellShockState>()(
               return;
             }
 
-            // Blank: in the original game shooting the dealer always passes the turn
-            // (unlike shooting self which keeps your turn on a blank)
             set({
               dealerHealth: newDealerHealth,
               isPlayerTurn: false,
-              isAnimating: false,
               isPendingAction: false,
               turnTimer: 30,
               gameStatus: 'playing',
             });
+            // isAnimating stays true so "WAITING..." never flashes
+            // between the shot ending and the dealer thinking overlay
 
             // If chamber empty, reload before dealer acts
             if (newChamber.length === 0) {
@@ -796,9 +795,7 @@ export const useShellShockStore = create<ShellShockState>()(
               window.setTimeout(() => set({ isRevealingShells: false }), 2500);
             }
 
-            setTimeout(() => {
-              if (get().gameStatus === 'playing' && !get().isPlayerTurn) get().dealerTurn();
-            }, 800);
+            if (get().gameStatus === 'playing' && !get().isPlayerTurn) get().dealerTurn();
           }, 1500);
         },
 
@@ -899,19 +896,17 @@ export const useShellShockStore = create<ShellShockState>()(
               set({
                 playerHealth: newPlayerHealth,
                 isPlayerTurn: false,
-                isAnimating: false,
                 isPendingAction: false,
                 turnTimer: 30,
                 gameStatus: 'playing',
               });
+              // isAnimating stays true so "WAITING..." never flashes
               if (newChamber.length === 0) {
                 const { chamber: nc, liveShells: nl, blankShells: nb } = generateChamber();
                 set({ chamber: nc, liveShells: nl, blankShells: nb, shellsRemaining: nc.length, isRevealingShells: true });
                 window.setTimeout(() => set({ isRevealingShells: false }), 2500);
               }
-              setTimeout(() => {
-                if (get().gameStatus === 'playing' && !get().isPlayerTurn) get().dealerTurn();
-              }, 800);
+              if (get().gameStatus === 'playing' && !get().isPlayerTurn) get().dealerTurn();
             } else {
               // *** Blank self-shot: player KEEPS their turn ***
               // Reload if chamber empty
@@ -1176,7 +1171,7 @@ export const useShellShockStore = create<ShellShockState>()(
           const state = get();
 
           if (isRelayMode(state.transportMode)) return; // PvP: server drives dealer
-          if (state.isPlayerTurn || state.gameStatus !== 'playing' || state.isAnimating || state.isPendingAction) return;
+          if (state.isPlayerTurn || state.gameStatus !== 'playing' || state.isPendingAction) return;
 
           set({ isPendingAction: true, isAnimating: true });
 
