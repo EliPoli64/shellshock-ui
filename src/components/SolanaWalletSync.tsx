@@ -4,8 +4,10 @@ import { useShellShockStore } from '../store/shellShockStore';
 
 export const SolanaWalletSync = () => {
   const { connection } = useConnection();
-  const { publicKey } = useWallet();
+  const wallet = useWallet();
+  const { publicKey } = wallet;
   const connectWallet = useShellShockStore((state) => state.connectWallet);
+  const initSolana = useShellShockStore((state) => state.initSolana);
   const refreshRelayStatus = useShellShockStore((state) => state.refreshRelayStatus);
   const relayConnectionState = useShellShockStore((state) => state.relayConnectionState);
   const resumeRelaySession = useShellShockStore((state) => state.resumeRelaySession);
@@ -24,6 +26,8 @@ export const SolanaWalletSync = () => {
         }
         return;
       }
+
+      initSolana(connection, wallet);
 
       try {
         const lamports = await connection.getBalance(publicKey!);

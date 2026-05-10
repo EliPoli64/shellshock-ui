@@ -31,7 +31,7 @@ export const ActionButtons: React.FC = () => {
     setShowItemMenu(!showItemMenu);
   };
 
-  const handleShootDealer = (targetWallet?: string) => {
+  const handleShootDealer = () => {
     if (isPendingAction) return;
     soundManager.play('uiClick');
     shootDealer();
@@ -125,7 +125,7 @@ export const ActionButtons: React.FC = () => {
                     boxShadow: '0 0 35px rgba(255, 50, 50, 0.55)'
                   }}
                   whileTap={{ scale: 0.96 }}
-                  onClick={() => handleShootDealer(p.wallet)}
+                  onClick={() => handleShootDealer()}
                   className={`
                     ${baseButtonClass}
                     bg-gradient-to-b from-red-500 via-red-700 to-red-950

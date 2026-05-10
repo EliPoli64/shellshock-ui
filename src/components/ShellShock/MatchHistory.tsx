@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useShellShockStore } from '../../store/shellShockStore';
 import { backendClient } from '../../lib/backendClient';
-import type { MatchHistoryEntry } from '../../types/backend';
 
 interface MatchHistoryProps {
   onClose: () => void;
@@ -10,7 +9,7 @@ interface MatchHistoryProps {
 
 export const MatchHistory: React.FC<MatchHistoryProps> = ({ onClose }) => {
   const { wallet } = useShellShockStore();
-  const [history, setHistory] = useState<MatchHistoryEntry[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,7 +44,7 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onClose }) => {
           </div>
         ) : (
           <div className="space-y-[2vh]">
-            {history.map((match) => {
+            {history.map((match: any) => {
               const isWinner = match.winner_wallet === wallet;
               return (
                 <div 
@@ -59,7 +58,7 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onClose }) => {
                       {isWinner ? '🏆 VICTORY' : '💀 DEFEAT'}
                     </div>
                     <div className="font-special-elite text-[1.4vh] text-gray-500 uppercase">
-                      {new Date(match.ended_at).toLocaleDateString()}
+                      {match.ended_at ? new Date(match.ended_at).toLocaleDateString() : ''}
                     </div>
                   </div>
                   
@@ -67,13 +66,13 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onClose }) => {
                     <div>
                       <div className="text-gray-500 uppercase text-[1.2vh]">Opponent</div>
                       <div className="text-text-cream truncate">
-                        {match.opponent_wallet.slice(0, 6)}...{match.opponent_wallet.slice(-4)}
+                        {match.opponent_wallet ? `${match.opponent_wallet.slice(0, 6)}...${match.opponent_wallet.slice(-4)}` : 'Unknown'}
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="text-gray-500 uppercase text-[1.2vh]">Stake</div>
                       <div className={`${isWinner ? 'text-green-400' : 'text-red-400'}`}>
-                        {isWinner ? '+' : '-'}{formatSol(match.bet_lamports)} SOL
+                        {isWinner ? '+' : '-'}{formatSol(match.bet_lamports || match.total_bet || 0)} SOL
                       </div>
                     </div>
                   </div>

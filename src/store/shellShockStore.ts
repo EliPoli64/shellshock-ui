@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Buffer } from 'buffer';
 import {
   Connection,
   PublicKey,
@@ -9,28 +8,20 @@ import {
   SystemProgram,
   SendTransactionError
 } from '@solana/web3.js';
+import type { WalletContextState } from '@solana/wallet-adapter-react';
 import { soundManager } from '../utils/soundEffects';
 import { relayClient } from '../lib/relayClient';
 import { backendClient } from '../lib/backendClient';
 import type { RelayRoomPhase, RelayServerMessage } from '../types/relay';
 import type { ItemType } from '../types/backend';
+import * as gameSdk from '../lib/game-sdk';
+import type { GameRoom, ItemsCount } from '../lib/game-sdk/types';
+import { itemsVecToCounts, gameStateToString } from '../lib/game-sdk/types';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 type GameMode = 'pve' | 'pvp' | null;
 type GameStatus = 'menu' | 'setup' | 'playing' | 'shot_animation' | 'round_end' | 'gameover';
-type TransportMode = 'pve_mock' | 'pvp_relay' | null;
+type TransportMode = 'pve_solana' | 'pvp_relay' | null;
 type RelayConnectionState = 'idle' | 'connecting' | 'connected' | 'closed';
-
-interface Items {
-  magnifyingGlass: number;
-  beer: number;
-  handcuffs: number;
-  cigarettes: number;
-  saw: number;
-  pill: number;
-}
 
 interface ShellShockState {
   wallet: string | null;
@@ -44,21 +35,19 @@ interface ShellShockState {
   gameStatus: GameStatus;
   playerHealth: number;
   dealerHealth: number;
-  maxHealth: number;        // max HP for this round (3 or 4 or 5)
+  maxHealth: number;
   shellsRemaining: number;
   liveShells: number;
   blankShells: number;
-  chamber: ('live' | 'blank')[]; // full ordered chamber (client-authoritative in PvE)
-  currentShell: 'live' | 'blank' | 'unknown'; // result of magnifying glass peek
+  currentShell: 'live' | 'blank' | 'unknown';
   isPlayerTurn: boolean;
   turnTimer: number;
-  isSawActive: boolean;     // next shot deals 2 damage
-  dealerHandcuffSkipped: boolean; // dealer's next turn is skipped (handcuffs on dealer)
+  isSawActive: boolean;
 
-  items: Items;
-  dealerItems: Items;
-  dealerHandcuffed: boolean;   // dealer loses their next turn
-  playerHandcuffed: boolean;   // player loses their next turn
+  items: ItemsCount;
+  dealerItems: ItemsCount;
+  dealerHandcuffed: boolean;
+  playerHandcuffed: boolean;
 
   roundsWon: number;
   roundsLost: number;
@@ -73,7 +62,6 @@ interface ShellShockState {
   lastShotTarget: 'player' | 'dealer' | null;
   dealerActionText: string | null;
 
-  // PvP / relay state
   relayHttpUrl: string;
   relayWsUrl: string;
   relayReady: boolean;
@@ -97,11 +85,10 @@ interface ShellShockState {
   players: {
     wallet: string;
     health: number;
-    items: Items;
+    items: ItemsCount;
     handcuffed: boolean;
   }[];
 
-  // Actions
   connectWallet: (wallet: string | null, solBalance?: number) => void;
   refreshRelayStatus: () => Promise<void>;
   openPvpSetup: () => Promise<void>;
@@ -124,16 +111,12 @@ interface ShellShockState {
   setShowItemMenu: (show: boolean) => void;
   resetTurn: () => void;
   dealerTurn: () => Promise<void>;
-  reloadShotgun: () => void;
   decrementTimer: () => void;
   resetPeek: () => void;
   createRoom: (connection: Connection, wallet: any) => Promise<void>;
-  executeDealerAction: (action: any) => Promise<void>;
+  initSolana: (connection: Connection, wallet: WalletContextState) => void;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 const DEFAULT_RELAY_HTTP_URL = import.meta.env.VITE_RELAY_HTTP_URL || 'http://localhost:8080';
 const DEFAULT_RELAY_WS_URL =
   import.meta.env.VITE_RELAY_WS_URL ||
@@ -155,157 +138,49 @@ const mapPhaseToGameStatus = (phase: RelayRoomPhase): GameStatus => {
 
 const isRelayMode = (transportMode: TransportMode) => transportMode === 'pvp_relay';
 
-// ---------------------------------------------------------------------------
-// Buckshot Roulette helpers
-// ---------------------------------------------------------------------------
+function applyGameRoomToState(room: GameRoom): Partial<ShellShockState> {
+  const stateStr = gameStateToString(room.state);
+  const isPlayerTurn = stateStr === 'playerTurn';
+  const isDealerTurn = stateStr === 'dealerTurn';
+  const isFinished = stateStr === 'finished';
+  const isWaiting = stateStr === 'waitingToStart';
 
-/** Shuffle an array in-place (Fisher-Yates). */
-function shuffle<T>(arr: T[]): T[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-/**
- * Generate a new chamber following Buckshot Roulette rules:
- * - Total shells: 2–8 (biased toward 4–6 for pacing)
- * - At least 1 live and 1 blank
- */
-function generateChamber(): { chamber: ('live' | 'blank')[]; liveShells: number; blankShells: number } {
-  const total = Math.floor(Math.random() * 5) + 2; // 2–6
-  // At least 1 live and 1 blank; distribute rest randomly
-  const live = Math.max(1, Math.min(total - 1, Math.floor(Math.random() * total)));
-  const blank = total - live;
-  const shells: ('live' | 'blank')[] = [
-    ...Array(live).fill('live'),
-    ...Array(blank).fill('blank'),
-  ];
-  shuffle(shells);
-  return { chamber: shells, liveShells: live, blankShells: blank };
-}
-
-/**
- * Generate a random item pool for a player at the start of a round,
- * following Buckshot Roulette's progression (later rounds give more items).
- */
-function generateItems(round: number): Items {
-  const pool: (keyof Items)[] = [
-    'magnifyingGlass', 'beer', 'handcuffs', 'cigarettes', 'saw', 'pill'
-  ];
-  const count = Math.min(8, 2 + round); // 3–8 items
-  const items: Items = {
-    magnifyingGlass: 0, beer: 0, handcuffs: 0,
-    cigarettes: 0, saw: 0, pill: 0,
-  };
-  for (let i = 0; i < count; i++) {
-    const key = pool[Math.floor(Math.random() * pool.length)];
-    items[key] = Math.min(items[key] + 1, 4); // max 4 of any item
-  }
-  return items;
-}
-
-// ---------------------------------------------------------------------------
-// Dealer AI (Buckshot Roulette-accurate strategy)
-// ---------------------------------------------------------------------------
-
-type DealerAction =
-  | { type: 'UseItem'; item: keyof Items; result?: string; ejected_shell?: 'live' | 'blank' }
-  | { type: 'ShootSelf'; is_live: boolean; damage: number }
-  | { type: 'ShootPlayer'; is_live: boolean; damage: number };
-
-/**
- * Decide what the dealer does this turn, using Buckshot Roulette strategy:
- *
- * Priority order:
- *  1. Saw if a live shell is certain (liveShells === shellsRemaining) — maximise damage
- *  2. Handcuffs if not handcuffed and player has >1 HP (skip player's next turn)
- *  3. MagnifyingGlass if unknown and ≥2 shells remain
- *  4. Cigarettes / Pill if health low (≤1)
- *  5. Beer to eject if only blanks remain (free extra turn) or shell count is high
- *  6. Shoot Self if current shell is blank (free extra turn in Buckshot rules!)
- *  7. Shoot Player if current shell is live (or unknown)
- */
-function decideDealerAction(
-  chamber: ('live' | 'blank')[],
-  dealerHealth: number,
-  playerHealth: number,
-  dealerItems: Items,
-  isSawActive: boolean,
-  knownShell: 'live' | 'blank' | 'unknown'
-): DealerAction {
-  const shellsRemaining = chamber.length;
-  const liveCount = chamber.filter(s => s === 'live').length;
-  const blankCount = chamber.filter(s => s === 'blank').length;
-  const nextShell = chamber[0]; // dealer can see the chamber in this impl
-  // In PvE the dealer "knows" the chamber (like the original game).
-  // We reveal it as a known shell so strategy is accurate.
-
-  // 1. Saw when certain the next shot is live — double damage
-  if (
-    !isSawActive &&
-    dealerItems.saw > 0 &&
-    nextShell === 'live' &&
-    playerHealth > 0
-  ) {
-    return { type: 'UseItem', item: 'saw' };
+  let gameStatus: GameStatus = 'playing';
+  if (isFinished) {
+    gameStatus = room.hpPlayer <= 0 ? 'gameover' : 'round_end';
+  } else if (isWaiting) {
+    gameStatus = 'setup';
   }
 
-  // 2. Handcuffs: use to skip player turn when advantageous
-  if (
-    dealerItems.handcuffs > 0 &&
-    playerHealth > 1 &&
-    nextShell === 'live' // about to shoot player, lock them down
-  ) {
-    return { type: 'UseItem', item: 'handcuffs' };
-  }
+  const blankShells = room.shellsTotal - room.shellsLive;
 
-  // 3. Heal if very low health (cigarettes restore 1, pill is random ±2/1)
-  if (dealerHealth <= 1) {
-    if (dealerItems.cigarettes > 0) {
-      return { type: 'UseItem', item: 'cigarettes' };
-    }
-    if (dealerItems.pill > 0) {
-      return { type: 'UseItem', item: 'pill' };
-    }
-  }
-
-  // 4. Beer to eject when all remaining shells are blank (free turn chaining)
-  //    OR if shell is unknown and there are many blanks
-  if (dealerItems.beer > 0 && blankCount > 0 && liveCount === 0) {
-    return { type: 'UseItem', item: 'beer' };
-  }
-
-  // 5. MagnifyingGlass when shell is truly unknown and multiple shells remain
-  if (dealerItems.magnifyingGlass > 0 && shellsRemaining >= 2 && knownShell === 'unknown') {
-    return { type: 'UseItem', item: 'magnifyingGlass' };
-  }
-
-  // 6. Shoot Self if next shell is blank — blank self-shots give dealer an extra turn
-  if (nextShell === 'blank') {
-    return { type: 'ShootSelf', is_live: false, damage: 0 };
-  }
-
-  // 7. Shoot Player (next shell is live or unknown)
   return {
-    type: 'ShootPlayer',
-    is_live: nextShell === 'live',
-    damage: isSawActive ? 2 : 1,
+    playerHealth: room.hpPlayer,
+    dealerHealth: room.hpDealer,
+    maxHealth: room.maxHp,
+    shellsRemaining: room.shellsTotal,
+    liveShells: room.shellsLive,
+    blankShells,
+    currentShell: 'unknown',
+    isPlayerTurn: isPlayerTurn || (isDealerTurn ? false : isPlayerTurn),
+    isSawActive: room.sawActive,
+    dealerHandcuffed: room.dealerCuffed,
+    playerHandcuffed: room.playerCuffed,
+    items: itemsVecToCounts(room.itemsPlayer),
+    dealerItems: itemsVecToCounts(room.itemsDealer),
+    gameStatus,
+    isPendingAction: false,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Store
-// ---------------------------------------------------------------------------
+let _connection: Connection | null = null;
+let _wallet: WalletContextState | null = null;
+let _unsubEvents: (() => void) | null = null;
 
 export const useShellShockStore = create<ShellShockState>()(
   persist(
     (set, get) => {
 
-      // -----------------------------------------------------------------------
-      // Internal relay connect helper
-      // -----------------------------------------------------------------------
       const connectRelay = async () => {
         if (relayClient.isOpen()) return;
         set({ relayConnectionState: 'connecting', relayError: null });
@@ -317,71 +192,111 @@ export const useShellShockStore = create<ShellShockState>()(
         });
       };
 
-      // -----------------------------------------------------------------------
-      // PvE: fire the next shell from the local chamber
-      // -----------------------------------------------------------------------
-      const pveFireShell = (
-        target: 'player' | 'dealer'
-      ): { shell: 'live' | 'blank'; newChamber: ('live' | 'blank')[] } => {
-        const { chamber } = get();
-        if (chamber.length === 0) throw new Error('Empty chamber');
-        const [shell, ...rest] = chamber;
-        return { shell, newChamber: rest };
+      const handleEvent = (event: any) => {
+        if (!event) return;
+        const name = event.name;
+        const data = event.data;
+
+        switch (name) {
+          case 'ShellFired': {
+            const isLive = data.wasLive;
+            const target = data.target === 0 ? 'player' : 'dealer';
+            set({
+              lastShotResult: isLive ? 'live' : 'blank',
+              lastShotTarget: target,
+              gameStatus: 'shot_animation',
+              isAnimating: true,
+            });
+            soundManager.play(isLive ? 'shotLive' : 'shotBlank');
+            window.setTimeout(() => {
+              set({ gameStatus: 'playing', isAnimating: false });
+            }, 1500);
+            break;
+          }
+          case 'ItemUsed': {
+            soundManager.play('itemUse');
+            if (data.player !== 0) {
+              set({ dealerActionText: `Dealer uses ${data.item}` });
+              window.setTimeout(() => set({ dealerActionText: null }), 1500);
+            }
+            break;
+          }
+          case 'GameFinished': {
+            const winner = data.winner;
+            const isPlayerWin = winner === 0;
+            set(s => ({
+              gameStatus: isPlayerWin ? 'round_end' : 'gameover',
+              roundsWon: isPlayerWin ? s.roundsWon + 1 : s.roundsWon,
+              roundsLost: isPlayerWin ? s.roundsLost : s.roundsLost + 1,
+              totalWon: isPlayerWin ? s.totalWon + s.betAmount : s.totalWon,
+              totalLost: isPlayerWin ? s.totalLost : s.totalLost + s.betAmount,
+            }));
+            soundManager.play(isPlayerWin ? 'win' : 'loss');
+            break;
+          }
+          case 'RoundReloaded': {
+            set({ isRevealingShells: true });
+            window.setTimeout(() => set({ isRevealingShells: false }), 2500);
+            break;
+          }
+          case 'MagnifyingGlassReveal': {
+            set({ currentShell: data.isLive ? 'live' : 'blank' });
+            break;
+          }
+          case 'DealerAction': {
+            set({ dealerActionText: `Dealer ${data.action}` });
+            window.setTimeout(() => set({ dealerActionText: null }), 1500);
+            break;
+          }
+          case 'TurnChanged': {
+            set({ isPlayerTurn: data.newTurn === 0 });
+            if (data.newTurn === 0) {
+              soundManager.play('turnStart');
+            }
+            break;
+          }
+        }
       };
 
-      // -----------------------------------------------------------------------
-      // PvE: check if round is over (health ≤ 0)
-      // -----------------------------------------------------------------------
-      const pveCheckRoundEnd = (
-        playerHealth: number,
-        dealerHealth: number,
-        betAmount: number,
-        roundsWon: number,
-        roundsLost: number,
-        totalWon: number,
-        totalLost: number
-      ): Partial<ShellShockState> | null => {
-        if (playerHealth <= 0) {
-          return {
-            gameStatus: 'gameover',
-            roundsLost: roundsLost + 1,
-            totalLost: totalLost + betAmount,
-          };
+      const refetchAndSync = async () => {
+        if (!_connection || !_wallet?.publicKey) return;
+        const room = await gameSdk.solana.fetchGameState(_connection, _wallet.publicKey);
+        if (room) {
+          set(applyGameRoomToState(room));
         }
-        if (dealerHealth <= 0) {
-          return {
-            gameStatus: 'round_end',
-            roundsWon: roundsWon + 1,
-            totalWon: totalWon + betAmount,
-          };
-        }
-        return null;
       };
 
-      // -----------------------------------------------------------------------
-      // PvE: reload shotgun when chamber is empty (start new sub-round)
-      // -----------------------------------------------------------------------
-      const pveReloadIfEmpty = () => {
-        const state = get();
-        if (state.chamber.length === 0 && state.gameStatus === 'playing') {
-          const { chamber, liveShells, blankShells } = generateChamber();
-          set({
-            chamber,
-            liveShells,
-            blankShells,
-            shellsRemaining: chamber.length,
-            currentShell: 'unknown',
-            isSawActive: false,
-            isRevealingShells: true,
-          });
-          window.setTimeout(() => set({ isRevealingShells: false }), 2500);
+      const executeDealerLoop = async () => {
+        if (!_connection || !_wallet?.publicKey) return;
+
+        let safety = 0;
+        while (safety < 10) {
+          safety++;
+          const state = get();
+
+          if (state.gameStatus !== 'playing') break;
+
+          try {
+            const sig = await gameSdk.solana.executeDealerTurn(_connection, _wallet);
+            set({ lastSignature: sig });
+
+            const room = await gameSdk.solana.fetchGameState(_connection, _wallet.publicKey);
+            if (!room) break;
+
+            set(applyGameRoomToState(room));
+
+            const stateStr = gameStateToString(room.state);
+            if (stateStr === 'playerTurn' || stateStr === 'finished') break;
+
+            await new Promise(r => setTimeout(r, 1000));
+          } catch (err) {
+            console.error('Dealer turn error:', err);
+            break;
+          }
         }
       };
 
       return {
-        // -----------------------------------------------------------------------
-        // Initial state
-        // -----------------------------------------------------------------------
         wallet: null,
         solBalance: 0,
 
@@ -393,16 +308,14 @@ export const useShellShockStore = create<ShellShockState>()(
         gameStatus: 'menu',
         playerHealth: 3,
         dealerHealth: 3,
-        maxHealth: 3,
+        maxHealth: 5,
         shellsRemaining: 0,
         liveShells: 0,
         blankShells: 0,
-        chamber: [],
         currentShell: 'unknown',
         isPlayerTurn: true,
         turnTimer: 30,
         isSawActive: false,
-        dealerHandcuffSkipped: false,
 
         items: { magnifyingGlass: 0, beer: 0, handcuffs: 0, cigarettes: 0, saw: 0, pill: 0 },
         dealerItems: { magnifyingGlass: 0, beer: 0, handcuffs: 0, cigarettes: 0, saw: 0, pill: 0 },
@@ -444,14 +357,27 @@ export const useShellShockStore = create<ShellShockState>()(
 
         players: [],
 
-        // -----------------------------------------------------------------------
-        // Wallet
-        // -----------------------------------------------------------------------
         connectWallet: (wallet, solBalance = 0) => set({ wallet, solBalance }),
 
-        // -----------------------------------------------------------------------
-        // Relay / PvP helpers (unchanged from original)
-        // -----------------------------------------------------------------------
+        initSolana: (connection, wallet) => {
+          _connection = connection;
+          _wallet = wallet;
+
+          if (_unsubEvents) {
+            _unsubEvents();
+            _unsubEvents = null;
+          }
+
+          if (wallet.publicKey) {
+            _unsubEvents = gameSdk.listenForEvents(
+              connection,
+              wallet.publicKey,
+              handleEvent,
+            );
+          }
+        },
+
+        // ---- Relay / PvP ----
         refreshRelayStatus: async () => {
           try {
             const [readyResponse, configResponse] = await Promise.all([
@@ -614,18 +540,18 @@ export const useShellShockStore = create<ShellShockState>()(
           const { ticketId } = get();
           if (ticketId && relayClient.isOpen()) relayClient.send({ type: 'queue.leave', ticket_id: ticketId });
           relayClient.close();
+          if (_unsubEvents) { _unsubEvents(); _unsubEvents = null; }
           set({
             gameMode: null, transportMode: null, gameStatus: 'menu',
             isSearching: false, ticketId: null, matchId: null, pvpRole: null,
             opponentWallet: null, roomPubkey: null, roomPhase: null, turnWallet: null,
             roomUpdatedAt: null, lastSignature: null, queueAheadCount: 0, sameBetCount: 0,
             relayConnectionState: 'idle', relayError: null, showItemMenu: false,
+            isPendingAction: false,
           });
         },
 
-        // -----------------------------------------------------------------------
-        // startGame — PvE uses fully client-side Buckshot Roulette logic
-        // -----------------------------------------------------------------------
+        // ---- startGame ----
         startGame: async (mode, bet) => {
           set({
             isAnimating: false,
@@ -641,57 +567,41 @@ export const useShellShockStore = create<ShellShockState>()(
             return;
           }
 
-          // ---- PvE: client-authoritative Buckshot Roulette round setup ----
-          const { roundsWon } = get();
-
-          // Buckshot Roulette: HP is 2–5 and resets each round (both start same)
-          const maxHealth = Math.min(5, 2 + Math.floor(roundsWon / 2));
-
-          const { chamber, liveShells, blankShells } = generateChamber();
-          const playerItems = generateItems(roundsWon);
-          const dealerItemsGen = generateItems(roundsWon);
+          if (!_connection || !_wallet?.publicKey) {
+            set({ relayError: 'Wallet not connected' });
+            return;
+          }
 
           set({
             gameMode: 'pve',
-            transportMode: 'pve_mock',
+            transportMode: 'pve_solana',
             matchId: `pve_${Date.now()}`,
             betAmount: bet,
-            gameStatus: 'playing',
-            playerHealth: maxHealth,
-            dealerHealth: maxHealth,
-            maxHealth,
-            chamber,
-            shellsRemaining: chamber.length,
-            liveShells,
-            blankShells,
-            currentShell: 'unknown',
-            items: playerItems,
-            dealerItems: dealerItemsGen,
-            isPlayerTurn: true,
-            isSawActive: false,
-            dealerHandcuffed: false,
-            playerHandcuffed: false,
-            dealerHandcuffSkipped: false,
-            lastShotResult: null,
-            lastShotTarget: null,
-            isRevealingShells: true,
-            isPendingAction: false,
-            turnTimer: 30,
+            isPendingAction: true,
           });
 
-          window.setTimeout(() => set({ isRevealingShells: false }), 3000);
+          try {
+            const betLamports = lamportsFromSol(bet);
+            const sig = await gameSdk.solana.createRoom(_connection, _wallet, betLamports);
+            set({ lastSignature: sig });
+
+            const room = await gameSdk.solana.fetchGameState(_connection, _wallet.publicKey);
+            if (room) {
+              set({
+                ...applyGameRoomToState(room),
+                gameStatus: 'playing',
+                isPendingAction: false,
+              });
+            }
+          } catch (error: any) {
+            set({ isPendingAction: false, relayError: gameSdk.parseAnchorError(error) });
+          }
         },
 
-        // -----------------------------------------------------------------------
-        // shootDealer — player shoots the dealer
-        // Buckshot rules:
-        //   - Live: dealer takes 1 dmg (or 2 if saw active). Turn passes to dealer.
-        //   - Blank: nothing happens, turn passes to dealer.
-        // -----------------------------------------------------------------------
+        // ---- shootDealer ----
         shootDealer: async () => {
           const state = get();
 
-          // PvP: delegate to relay backend
           if (isRelayMode(state.transportMode)) {
             if (!state.matchId || !state.wallet || state.isPendingAction || state.gameStatus !== 'playing' || state.isAnimating) return;
             set({ isPendingAction: true });
@@ -735,76 +645,27 @@ export const useShellShockStore = create<ShellShockState>()(
             return;
           }
 
-          // ---- PvE client-side ----
+          if (!_connection || !_wallet?.publicKey) return;
           if (state.isPendingAction || !state.isPlayerTurn || state.gameStatus !== 'playing' || state.isAnimating) return;
-          if (state.chamber.length === 0) return;
 
-          set({ isPendingAction: true, isAnimating: true, showItemMenu: false });
+          set({ isPendingAction: true, showItemMenu: false });
 
-          const { shell, newChamber } = pveFireShell('dealer');
-          const isLive = shell === 'live';
-          const damage = state.isSawActive ? 2 : 1;
-          const newLive = isLive ? state.liveShells - 1 : state.liveShells;
-          const newBlank = !isLive ? state.blankShells - 1 : state.blankShells;
+          try {
+            const sig = await gameSdk.solana.shoot(_connection, _wallet, { opponent: {} });
+            set({ lastSignature: sig });
+            await refetchAndSync();
+            set({ isPendingAction: false, turnTimer: 30 });
 
-          set({
-            lastShotResult: shell,
-            lastShotTarget: 'dealer',
-            gameStatus: 'shot_animation',
-            chamber: newChamber,
-            shellsRemaining: newChamber.length,
-            liveShells: newLive,
-            blankShells: newBlank,
-            currentShell: 'unknown',
-            isSawActive: false,
-          });
-          soundManager.play(isLive ? 'shotLive' : 'shotBlank');
-
-          window.setTimeout(() => {
-            const s = get();
-            const newDealerHealth = isLive ? Math.max(0, s.dealerHealth - damage) : s.dealerHealth;
-
-            // Check end state
-            const end = pveCheckRoundEnd(
-              s.playerHealth, newDealerHealth,
-              s.betAmount, s.roundsWon, s.roundsLost, s.totalWon, s.totalLost
-            );
-
-            if (end) {
-              set({ ...end, dealerHealth: newDealerHealth, isAnimating: false, isPendingAction: false });
-              return;
+            const ns = get();
+            if (ns.gameStatus === 'playing' && !ns.isPlayerTurn) {
+              setTimeout(() => executeDealerLoop(), 500);
             }
-
-            set({
-              dealerHealth: newDealerHealth,
-              isPlayerTurn: false,
-              isPendingAction: false,
-              turnTimer: 30,
-              gameStatus: 'playing',
-            });
-            // isAnimating stays true so "WAITING..." never flashes
-            // between the shot ending and the dealer thinking overlay
-
-            // If chamber empty, reload before dealer acts
-            if (newChamber.length === 0) {
-              const { chamber: nc, liveShells: nl, blankShells: nb } = generateChamber();
-              set({
-                chamber: nc, liveShells: nl, blankShells: nb,
-                shellsRemaining: nc.length, isRevealingShells: true,
-              });
-              window.setTimeout(() => set({ isRevealingShells: false }), 2500);
-            }
-
-            if (get().gameStatus === 'playing' && !get().isPlayerTurn) get().dealerTurn();
-          }, 1500);
+          } catch (error: any) {
+            set({ isPendingAction: false, relayError: gameSdk.parseAnchorError(error) });
+          }
         },
 
-        // -----------------------------------------------------------------------
-        // shootSelf — player shoots themselves
-        // Buckshot rules:
-        //   - Live: player takes 1 dmg (or 2 if saw was used against them). Turn passes.
-        //   - Blank: player gets to keep their turn! (the defining mechanic)
-        // -----------------------------------------------------------------------
+        // ---- shootSelf ----
         shootSelf: async () => {
           const state = get();
 
@@ -851,89 +712,27 @@ export const useShellShockStore = create<ShellShockState>()(
             return;
           }
 
-          // ---- PvE client-side ----
+          if (!_connection || !_wallet?.publicKey) return;
           if (state.isPendingAction || !state.isPlayerTurn || state.gameStatus !== 'playing' || state.isAnimating) return;
-          if (state.chamber.length === 0) return;
 
-          set({ isPendingAction: true, isAnimating: true, showItemMenu: false });
+          set({ isPendingAction: true, showItemMenu: false });
 
-          const { shell, newChamber } = pveFireShell('player');
-          const isLive = shell === 'live';
-          const damage = state.isSawActive ? 2 : 1;
-          const newLive = isLive ? state.liveShells - 1 : state.liveShells;
-          const newBlank = !isLive ? state.blankShells - 1 : state.blankShells;
+          try {
+            const sig = await gameSdk.solana.shoot(_connection, _wallet, { self: {} });
+            set({ lastSignature: sig });
+            await refetchAndSync();
+            set({ isPendingAction: false, turnTimer: 30 });
 
-          set({
-            lastShotResult: shell,
-            lastShotTarget: 'player',
-            gameStatus: 'shot_animation',
-            chamber: newChamber,
-            shellsRemaining: newChamber.length,
-            liveShells: newLive,
-            blankShells: newBlank,
-            currentShell: 'unknown',
-            isSawActive: false,
-          });
-          soundManager.play(isLive ? 'shotLive' : 'shotBlank');
-
-          window.setTimeout(() => {
-            const s = get();
-            const newPlayerHealth = isLive ? Math.max(0, s.playerHealth - damage) : s.playerHealth;
-
-            // Check end state
-            const end = pveCheckRoundEnd(
-              newPlayerHealth, s.dealerHealth,
-              s.betAmount, s.roundsWon, s.roundsLost, s.totalWon, s.totalLost
-            );
-
-            if (end) {
-              set({ ...end, playerHealth: newPlayerHealth, isAnimating: false, isPendingAction: false });
-              return;
+            const ns = get();
+            if (ns.gameStatus === 'playing' && !ns.isPlayerTurn) {
+              setTimeout(() => executeDealerLoop(), 500);
             }
-
-            if (isLive) {
-              // Live self-shot: turn passes to dealer
-              set({
-                playerHealth: newPlayerHealth,
-                isPlayerTurn: false,
-                isPendingAction: false,
-                turnTimer: 30,
-                gameStatus: 'playing',
-              });
-              // isAnimating stays true so "WAITING..." never flashes
-              if (newChamber.length === 0) {
-                const { chamber: nc, liveShells: nl, blankShells: nb } = generateChamber();
-                set({ chamber: nc, liveShells: nl, blankShells: nb, shellsRemaining: nc.length, isRevealingShells: true });
-                window.setTimeout(() => set({ isRevealingShells: false }), 2500);
-              }
-              if (get().gameStatus === 'playing' && !get().isPlayerTurn) get().dealerTurn();
-            } else {
-              // *** Blank self-shot: player KEEPS their turn ***
-              // Reload if chamber empty
-              if (newChamber.length === 0) {
-                const { chamber: nc, liveShells: nl, blankShells: nb } = generateChamber();
-                set({
-                  chamber: nc, liveShells: nl, blankShells: nb, shellsRemaining: nc.length,
-                  isRevealingShells: true, isPlayerTurn: true, isAnimating: false, isPendingAction: false,
-                  gameStatus: 'playing',
-                });
-                window.setTimeout(() => set({ isRevealingShells: false }), 2500);
-              } else {
-                set({
-                  isPlayerTurn: true,   // keep turn!
-                  isAnimating: false,
-                  isPendingAction: false,
-                  turnTimer: 30,
-                  gameStatus: 'playing',
-                });
-              }
-            }
-          }, 1500);
+          } catch (error: any) {
+            set({ isPendingAction: false, relayError: gameSdk.parseAnchorError(error) });
+          }
         },
 
-        // -----------------------------------------------------------------------
-        // useItem — Buckshot Roulette item logic, client-side for PvE
-        // -----------------------------------------------------------------------
+        // ---- useItem ----
         useItem: async (itemKey) => {
           const state = get();
 
@@ -972,109 +771,30 @@ export const useShellShockStore = create<ShellShockState>()(
             return;
           }
 
-          // ---- PvE client-side item effects ----
+          if (!_connection || !_wallet?.publicKey) return;
           if (state.isPendingAction || !state.isPlayerTurn || state.gameStatus !== 'playing' || state.isAnimating) return;
 
-          const item = itemKey as keyof Items;
-          if (state.items[item] <= 0) return;
+          const anchorItemType = mapItemToAnchor(itemKey);
+          if (!anchorItemType) return;
 
-          soundManager.play('itemUse');
           set({ isPendingAction: true });
 
-          // Deduct item
-          const newItems: Items = { ...state.items, [item]: state.items[item] - 1 };
+          try {
+            const sig = await gameSdk.solana.useItem(_connection, _wallet, anchorItemType);
+            set({ lastSignature: sig });
+            await refetchAndSync();
+            set({ isPendingAction: false, turnTimer: 30 });
 
-          switch (item) {
-            // ------------------------------------------------------------------
-            // Magnifying Glass: peek at the current (top) shell without firing
-            // ------------------------------------------------------------------
-            case 'magnifyingGlass': {
-              const peeked = state.chamber[0] ?? 'unknown';
-              set({ items: newItems, currentShell: peeked, isPendingAction: false });
-              break;
+            const ns = get();
+            if (ns.gameStatus === 'playing' && !ns.isPlayerTurn) {
+              setTimeout(() => executeDealerLoop(), 500);
             }
-
-            // ------------------------------------------------------------------
-            // Beer: eject (rack) the current shell without firing it.
-            //       The shell is discarded and the turn continues.
-            // ------------------------------------------------------------------
-            case 'beer': {
-              if (state.chamber.length === 0) { set({ isPendingAction: false }); break; }
-              const [ejected, ...rest] = state.chamber;
-              const newLive = ejected === 'live' ? state.liveShells - 1 : state.liveShells;
-              const newBlank = ejected === 'blank' ? state.blankShells - 1 : state.blankShells;
-              set({
-                items: newItems,
-                chamber: rest,
-                shellsRemaining: rest.length,
-                liveShells: newLive,
-                blankShells: newBlank,
-                currentShell: 'unknown',
-                isPendingAction: false,
-              });
-              // Reload if now empty
-              if (rest.length === 0) pveReloadIfEmpty();
-              break;
-            }
-
-            // ------------------------------------------------------------------
-            // Handcuffs: dealer skips their next turn
-            // ------------------------------------------------------------------
-            case 'handcuffs': {
-              set({ items: newItems, dealerHandcuffed: true, isPendingAction: false });
-              break;
-            }
-
-            // ------------------------------------------------------------------
-            // Cigarettes: restore 1 HP (cannot exceed maxHealth)
-            // ------------------------------------------------------------------
-            case 'cigarettes': {
-              const healed = Math.min(state.maxHealth, state.playerHealth + 1);
-              set({ items: newItems, playerHealth: healed, isPendingAction: false });
-              break;
-            }
-
-            // ------------------------------------------------------------------
-            // Saw: next shot deals double damage
-            // ------------------------------------------------------------------
-            case 'saw': {
-              set({ items: newItems, isSawActive: true, isPendingAction: false });
-              break;
-            }
-
-            // ------------------------------------------------------------------
-            // Pill (adrenaline in original): 50% chance +2 HP, 50% chance -1 HP
-            // If HP drops to 0 from pill, it's a loss.
-            // ------------------------------------------------------------------
-            case 'pill': {
-              const lucky = Math.random() < 0.5;
-              let newHealth: number;
-              if (lucky) {
-                newHealth = Math.min(state.maxHealth, state.playerHealth + 2);
-              } else {
-                newHealth = Math.max(0, state.playerHealth - 1);
-              }
-              set({ items: newItems, playerHealth: newHealth, isPendingAction: false });
-
-              if (newHealth <= 0) {
-                const s = get();
-                set({
-                  gameStatus: 'gameover',
-                  roundsLost: s.roundsLost + 1,
-                  totalLost: s.totalLost + s.betAmount,
-                });
-              }
-              break;
-            }
-
-            default:
-              set({ isPendingAction: false });
+          } catch (error: any) {
+            set({ isPendingAction: false, relayError: gameSdk.parseAnchorError(error) });
           }
         },
 
-        // -----------------------------------------------------------------------
-        // fold — concede the round (PvE only)
-        // -----------------------------------------------------------------------
+        // ---- fold ----
         fold: () => {
           if (isRelayMode(get().transportMode)) return;
           set(s => ({
@@ -1084,9 +804,7 @@ export const useShellShockStore = create<ShellShockState>()(
           }));
         },
 
-        // -----------------------------------------------------------------------
-        // playAgain / leaveTable
-        // -----------------------------------------------------------------------
+        // ---- playAgain / leaveTable ----
         playAgain: () => {
           const { gameMode, betAmount } = get();
           if (gameMode === 'pvp') {
@@ -1102,14 +820,13 @@ export const useShellShockStore = create<ShellShockState>()(
 
         leaveTable: () => {
           if (get().gameMode === 'pvp') { get().returnToMenu(); return; }
+          if (_unsubEvents) { _unsubEvents(); _unsubEvents = null; }
           set({ gameStatus: 'menu' });
         },
 
         setShowItemMenu: (show) => set({ showItemMenu: show }),
 
-        // -----------------------------------------------------------------------
-        // decrementTimer
-        // -----------------------------------------------------------------------
+        // ---- decrementTimer ----
         decrementTimer: () => {
           const {
             transportMode, turnTimer, isPlayerTurn, gameStatus,
@@ -1131,7 +848,6 @@ export const useShellShockStore = create<ShellShockState>()(
           set({ turnTimer: newTimer });
 
           if (newTimer === 0) {
-            // Time up — penalise player 1 HP, pass turn
             const newHealth = playerHealth - 1;
             if (newHealth <= 0) {
               set({
@@ -1141,7 +857,7 @@ export const useShellShockStore = create<ShellShockState>()(
             } else {
               set({ playerHealth: newHealth, isPlayerTurn: false, turnTimer: 30 });
               setTimeout(() => {
-                if (get().gameStatus === 'playing' && !get().isPlayerTurn) get().dealerTurn();
+                if (get().gameStatus === 'playing' && !get().isPlayerTurn) executeDealerLoop();
               }, 500);
             }
           }
@@ -1152,273 +868,62 @@ export const useShellShockStore = create<ShellShockState>()(
           set({ isPlayerTurn: true, turnTimer: 30 });
         },
 
-        // -----------------------------------------------------------------------
-        // reloadShotgun — manual reload trigger (chamber empty, PvE)
-        // -----------------------------------------------------------------------
-        reloadShotgun: () => {
-          const { gameStatus, isAnimating, isPendingAction, transportMode } = get();
-          if (isRelayMode(transportMode)) return;
-          if (isPendingAction || gameStatus !== 'playing' || isAnimating) return;
-          pveReloadIfEmpty();
-        },
-
         resetPeek: () => set({ currentShell: 'unknown' }),
 
-        // -----------------------------------------------------------------------
-        // dealerTurn — PvE AI using Buckshot Roulette strategy
-        // -----------------------------------------------------------------------
+        // ---- dealerTurn (PvP relay only) ----
         dealerTurn: async () => {
           const state = get();
-
-          if (isRelayMode(state.transportMode)) return; // PvP: server drives dealer
+          if (!isRelayMode(state.transportMode)) return;
           if (state.isPlayerTurn || state.gameStatus !== 'playing' || state.isPendingAction) return;
 
           set({ isPendingAction: true, isAnimating: true });
 
-          // Small thinking delay
-          await new Promise(r => setTimeout(r, 900));
-
-          // Check if dealer's turn is skipped due to handcuffs
-          if (state.dealerHandcuffed) {
-            set({
-              dealerHandcuffed: false,
-              isPlayerTurn: true,
-              isAnimating: false,
-              isPendingAction: false,
-              turnTimer: 30,
-              dealerActionText: 'Dealer is handcuffed — turn skipped!',
+          try {
+            const res = await backendClient.getDealerTurn({
+              match_id: state.matchId!,
+              player_health: state.playerHealth,
+              dealer_health: state.dealerHealth,
+              shells_remaining: state.shellsRemaining,
+              live_shells: state.liveShells,
+              blank_shells: state.blankShells,
+              items: state.items,
+              player_handcuffed: state.playerHandcuffed,
             });
-            soundManager.play('turnStart');
-            await new Promise(r => setTimeout(r, 1200));
-            set({ dealerActionText: null });
-            return;
-          }
 
-          // Reload if empty (shouldn't normally happen but safety check)
-          if (state.chamber.length === 0) {
-            const { chamber: nc, liveShells: nl, blankShells: nb } = generateChamber();
-            set({
-              chamber: nc, liveShells: nl, blankShells: nb, shellsRemaining: nc.length,
-              isRevealingShells: true,
-            });
-            await new Promise(r => setTimeout(r, 2500));
-            set({ isRevealingShells: false });
-          }
+            if (res.success) {
+              for (const action of res.actions) {
+                switch (action.type) {
+                  case 'UseItem':
+                    soundManager.play('itemUse');
+                    set({ dealerActionText: `Dealer uses ${action.item}` });
+                    await new Promise(r => setTimeout(r, 1200));
+                    break;
+                  case 'ShootSelf':
+                  case 'ShootPlayer': {
+                    const isLive = action.is_live!;
+                    set({
+                      lastShotResult: isLive ? 'live' : 'blank',
+                      lastShotTarget: action.type === 'ShootSelf' ? 'dealer' : 'player',
+                      gameStatus: 'shot_animation',
+                      isAnimating: true,
+                    });
+                    soundManager.play(isLive ? 'shotLive' : 'shotBlank');
+                    await new Promise(r => setTimeout(r, 1500));
+                    break;
+                  }
+                }
+              }
 
-          // Dealer takes multiple actions per turn (just like Buckshot Roulette)
-          let keepGoing = true;
-          let firstAction = true;
-
-          while (keepGoing) {
-            const cur = get();
-            if (cur.gameStatus !== 'playing') break;
-            if (cur.chamber.length === 0) break;
-
-            const action = decideDealerAction(
-              cur.chamber,
-              cur.dealerHealth,
-              cur.playerHealth,
-              cur.dealerItems,
-              cur.isSawActive,
-              cur.currentShell,
-            );
-
-            await get().executeDealerAction(action);
-
-            const after = get();
-            if (after.gameStatus !== 'playing') break;
-
-            // Dealer keeps turn only if they shot themselves with a blank
-            if (action.type === 'ShootSelf' && !action.is_live) {
-              // extra turn — loop
-              await new Promise(r => setTimeout(r, 500));
-            } else if (action.type === 'UseItem') {
-              // Item use doesn't end the turn; loop to pick next action
-              await new Promise(r => setTimeout(r, 600));
-            } else {
-              // Shot fired at player or live self-shot — turn ends
-              keepGoing = false;
+              await refetchAndSync();
             }
-
-            firstAction = false;
+          } catch {
+            // fall through
           }
 
-          const final = get();
-          if (final.gameStatus === 'playing') {
-            // Reload if chamber empty after dealer's turn
-            if (final.chamber.length === 0) {
-              const { chamber: nc, liveShells: nl, blankShells: nb } = generateChamber();
-              set({
-                chamber: nc, liveShells: nl, blankShells: nb, shellsRemaining: nc.length,
-                isRevealingShells: true,
-              });
-              await new Promise(r => setTimeout(r, 2500));
-              set({ isRevealingShells: false });
-            }
-
-            // Pass turn back to player
-            set({
-              isPlayerTurn: true,
-              isAnimating: false,
-              isPendingAction: false,
-              turnTimer: 30,
-              dealerActionText: null,
-            });
-            soundManager.play('turnStart');
-          } else {
-            set({ isAnimating: false, isPendingAction: false, dealerActionText: null });
-          }
+          set({ isAnimating: false, isPendingAction: false, dealerActionText: null });
         },
 
-        // -----------------------------------------------------------------------
-        // executeDealerAction — applies a single dealer action to PvE state
-        // -----------------------------------------------------------------------
-        executeDealerAction: async (action: DealerAction) => {
-          const s = get();
-
-          switch (action.type) {
-            // ---------- Items ----------
-            case 'UseItem': {
-              const item = action.item;
-              soundManager.play('itemUse');
-              set({ dealerActionText: `Dealer uses ${item}` });
-
-              const newDealerItems: Items = {
-                ...s.dealerItems,
-                [item]: Math.max(0, s.dealerItems[item] - 1),
-              };
-
-              switch (item) {
-                case 'magnifyingGlass': {
-                  // Dealer peeks — we update their internal known shell (no UI reveal to player)
-                  set({ dealerItems: newDealerItems });
-                  break;
-                }
-                case 'beer': {
-                  const [ejected, ...rest] = s.chamber;
-                  const newLive = ejected === 'live' ? s.liveShells - 1 : s.liveShells;
-                  const newBlank = ejected === 'blank' ? s.blankShells - 1 : s.blankShells;
-                  set({
-                    dealerItems: newDealerItems,
-                    chamber: rest,
-                    shellsRemaining: rest.length,
-                    liveShells: newLive,
-                    blankShells: newBlank,
-                    currentShell: 'unknown',
-                  });
-                  break;
-                }
-                case 'handcuffs': {
-                  set({ dealerItems: newDealerItems, playerHandcuffed: true });
-                  break;
-                }
-                case 'cigarettes': {
-                  const healed = Math.min(s.maxHealth, s.dealerHealth + 1);
-                  set({ dealerItems: newDealerItems, dealerHealth: healed });
-                  break;
-                }
-                case 'saw': {
-                  set({ dealerItems: newDealerItems, isSawActive: true });
-                  break;
-                }
-                case 'pill': {
-                  const lucky = Math.random() < 0.5;
-                  const newDealerHealth = lucky
-                    ? Math.min(s.maxHealth, s.dealerHealth + 2)
-                    : Math.max(0, s.dealerHealth - 1);
-                  set({ dealerItems: newDealerItems, dealerHealth: newDealerHealth });
-                  break;
-                }
-                default:
-                  set({ dealerItems: newDealerItems });
-              }
-
-              await new Promise(r => setTimeout(r, 1400));
-              set({ dealerActionText: null });
-              break;
-            }
-
-            // ---------- Shoot Self ----------
-            case 'ShootSelf': {
-              const cur = get();
-              const [shell, ...rest] = cur.chamber;
-              const isLive = shell === 'live';
-              const damage = cur.isSawActive ? 2 : 1;
-              const newLive = isLive ? cur.liveShells - 1 : cur.liveShells;
-              const newBlank = !isLive ? cur.blankShells - 1 : cur.blankShells;
-
-              set({
-                lastShotResult: shell,
-                lastShotTarget: 'dealer',
-                gameStatus: 'shot_animation',
-                chamber: rest,
-                shellsRemaining: rest.length,
-                liveShells: newLive,
-                blankShells: newBlank,
-                currentShell: 'unknown',
-                isSawActive: false,
-              });
-              soundManager.play(isLive ? 'shotLive' : 'shotBlank');
-
-              await new Promise(r => setTimeout(r, 1500));
-
-              const newDealerHealth = isLive ? Math.max(0, cur.dealerHealth - damage) : cur.dealerHealth;
-              const end = pveCheckRoundEnd(
-                cur.playerHealth, newDealerHealth,
-                cur.betAmount, cur.roundsWon, cur.roundsLost, cur.totalWon, cur.totalLost
-              );
-
-              if (end) {
-                set({ ...end, dealerHealth: newDealerHealth });
-              } else {
-                set({ dealerHealth: newDealerHealth, gameStatus: 'playing' });
-              }
-              break;
-            }
-
-            // ---------- Shoot Player ----------
-            case 'ShootPlayer': {
-              const cur = get();
-              const [shell, ...rest] = cur.chamber;
-              const isLive = shell === 'live';
-              const damage = cur.isSawActive ? 2 : 1;
-              const newLive = isLive ? cur.liveShells - 1 : cur.liveShells;
-              const newBlank = !isLive ? cur.blankShells - 1 : cur.blankShells;
-
-              set({
-                lastShotResult: shell,
-                lastShotTarget: 'player',
-                gameStatus: 'shot_animation',
-                chamber: rest,
-                shellsRemaining: rest.length,
-                liveShells: newLive,
-                blankShells: newBlank,
-                currentShell: 'unknown',
-                isSawActive: false,
-              });
-              soundManager.play(isLive ? 'shotLive' : 'shotBlank');
-
-              await new Promise(r => setTimeout(r, 1500));
-
-              const newPlayerHealth = isLive ? Math.max(0, cur.playerHealth - damage) : cur.playerHealth;
-              const end = pveCheckRoundEnd(
-                newPlayerHealth, cur.dealerHealth,
-                cur.betAmount, cur.roundsWon, cur.roundsLost, cur.totalWon, cur.totalLost
-              );
-
-              if (end) {
-                set({ ...end, playerHealth: newPlayerHealth });
-              } else {
-                set({ playerHealth: newPlayerHealth, gameStatus: 'playing' });
-              }
-              break;
-            }
-          }
-        },
-
-        // -----------------------------------------------------------------------
-        // createRoom (on-chain PvP room — unchanged)
-        // -----------------------------------------------------------------------
+        // ---- PvP createRoom (relay flow) ----
         createRoom: async (connection, wallet) => {
           const { matchId, betAmount, relayProgramId, opponentWallet } = get();
           if (!matchId || !relayProgramId || !wallet.publicKey || !opponentWallet) return;
@@ -1477,3 +982,15 @@ export const useShellShockStore = create<ShellShockState>()(
     { name: 'shell-shock-storage' }
   )
 );
+
+function mapItemToAnchor(itemKey: string): any {
+  const map: Record<string, any> = {
+    magnifyingGlass: { magnifyingGlass: {} },
+    beer: { beer: {} },
+    handcuffs: { handcuffs: {} },
+    cigarettes: { cigarettes: {} },
+    saw: { handSaw: {} },
+    pill: { pills: {} },
+  };
+  return map[itemKey] || null;
+}
