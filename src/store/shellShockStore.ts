@@ -1209,6 +1209,7 @@ export const useShellShockStore = create<ShellShockState>()(
           // Dealer takes multiple actions per turn (just like Buckshot Roulette)
           let keepGoing = true;
           let firstAction = true;
+          console.log(firstAction);
 
           while (keepGoing) {
             const cur = get();
